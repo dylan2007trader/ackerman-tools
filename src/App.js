@@ -1,0 +1,3835 @@
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import "./styles.css";
+import mammoth from "mammoth";
+import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf";
+import { Document, Packer, Paragraph, TextRun, HeadingLevel } from "docx";
+import { BRAND_LOGO } from "./brandLogo";
+import {
+  APP_IDS,
+  confirmCheckout,
+  createAccount,
+  getCurrentUser,
+  hasPurchasedApp,
+  loginUser,
+  logoutUser,
+  refreshCurrentUser,
+  startCheckout,
+} from "./accountStore";
+import {
+  buildCoverLetter,
+  buildCoverLetterText,
+  downloadCoverLetterHtml,
+  downloadCoverLetterText,
+  printCoverLetterPdf,
+} from "./coverBuilder";
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+
+const PREMIUM_PRICE = 9;
+const CHECKOUT_STATE_KEY = "resumeForgeCheckoutState";
+
+const ROLE_OPTIONS = [
+  "Software Engineer",
+  "Data Science",
+  "Frontend / Web Developer",
+  "Backend / Full Stack Developer",
+  "DevOps / Cloud / Infrastructure",
+];
+
+const SECTION_HEADER_KEYWORDS = [
+  "summary",
+  "professional summary",
+  "profile",
+  "objective",
+  "education",
+  "experience",
+  "work experience",
+  "professional experience",
+  "employment",
+  "projects",
+  "selected projects",
+  "project experience",
+  "technical projects",
+  "software projects",
+  "skills",
+  "technical skills",
+  "leadership",
+  "activities",
+  "certifications",
+  "coursework",
+  "relevant coursework",
+  "awards",
+  "publications",
+  "soft skills",
+];
+
+const ACTION_VERBS = [
+  "achieved",
+  "analyzed",
+  "architected",
+  "automated",
+  "built",
+  "collaborated",
+  "configured",
+  "created",
+  "deployed",
+  "designed",
+  "developed",
+  "delivered",
+  "drove",
+  "engineered",
+  "executed",
+  "generated",
+  "implemented",
+  "improved",
+  "increased",
+  "integrated",
+  "launched",
+  "led",
+  "maintained",
+  "managed",
+  "migrated",
+  "modeled",
+  "optimized",
+  "organized",
+  "performed",
+  "processed",
+  "produced",
+  "reduced",
+  "resolved",
+  "scaled",
+  "shipped",
+  "streamlined",
+  "tested",
+  "wrote",
+];
+
+const WEAK_STARTERS = [
+  "helped",
+  "assisted",
+  "worked on",
+  "responsible for",
+  "duties included",
+  "tasked with",
+  "contribute",
+  "contributed to",
+  "support",
+  "supported",
+  "currently working on",
+  "learned",
+  "exposed to",
+  "familiar with",
+  "participated in",
+  "involved in",
+  "was part of",
+];
+
+const IMPACT_WORDS = [
+  "achieved",
+  "automated",
+  "built",
+  "delivered",
+  "deployed",
+  "designed",
+  "developed",
+  "engineered",
+  "expanded",
+  "generated",
+  "implemented",
+  "improved",
+  "increased",
+  "launched",
+  "led",
+  "optimized",
+  "reduced",
+  "resolved",
+  "scaled",
+  "shipped",
+  "streamlined",
+];
+
+const TECHNICAL_SIGNALS = [
+  "python",
+  "java",
+  "javascript",
+  "typescript",
+  "react",
+  "next.js",
+  "nextjs",
+  "node",
+  "express",
+  "sql",
+  "postgresql",
+  "mysql",
+  "sqlite",
+  "docker",
+  "aws",
+  "gcp",
+  "azure",
+  "git",
+  "github",
+  "rest api",
+  "api",
+  "apis",
+  "fastapi",
+  "flask",
+  "django",
+  "pandas",
+  "numpy",
+  "machine learning",
+  "data structures",
+  "algorithms",
+  "computer vision",
+  "embedded systems",
+  "operating systems",
+  "distributed systems",
+  "system design",
+  "linux",
+  "mongodb",
+  "firebase",
+  "c++",
+  "c#",
+  "html",
+  "css",
+  "tailwind",
+  "bootstrap",
+  "etl",
+  "database",
+  "databases",
+  "oop",
+  "object-oriented",
+  "terraform",
+  "kubernetes",
+  "ci/cd",
+  "github actions",
+  "cloudwatch",
+  "infrastructure",
+  "networking",
+  "bash",
+  "swift",
+  "objective-c",
+  "objc",
+  "three.js",
+  "arduino",
+  "opencv",
+  "unix",
+  "matlab",
+];
+
+const KEYWORD_POOL = {
+  "Software Engineer": [
+    "python",
+    "java",
+    "javascript",
+    "typescript",
+    "c++",
+    "sql",
+    "git",
+    "github",
+    "api",
+    "database",
+    "algorithms",
+    "data structures",
+    "oop",
+    "object-oriented",
+    "software",
+    "engineering",
+    "testing",
+    "debugging",
+    "system design",
+    "react",
+    "node",
+  ],
+  "Data Science": [
+    "python",
+    "pandas",
+    "numpy",
+    "sql",
+    "machine learning",
+    "data analysis",
+    "data science",
+    "visualization",
+    "model",
+    "models",
+    "statistics",
+    "etl",
+    "cleaning",
+    "dataset",
+    "datasets",
+    "regression",
+    "classification",
+    "jupyter",
+    "matplotlib",
+    "scikit",
+  ],
+  "Frontend / Web Developer": [
+    "html",
+    "css",
+    "javascript",
+    "typescript",
+    "react",
+    "frontend",
+    "web",
+    "responsive",
+    "ui",
+    "ux",
+    "tailwind",
+    "bootstrap",
+    "api",
+    "components",
+    "accessibility",
+    "performance",
+    "figma",
+    "state management",
+  ],
+  "Backend / Full Stack Developer": [
+    "node",
+    "express",
+    "python",
+    "java",
+    "sql",
+    "postgresql",
+    "mongodb",
+    "api",
+    "rest",
+    "backend",
+    "full stack",
+    "authentication",
+    "database",
+    "docker",
+    "aws",
+    "microservices",
+    "server",
+    "deployment",
+    "react",
+    "typescript",
+  ],
+  "DevOps / Cloud / Infrastructure": [
+    "aws",
+    "docker",
+    "kubernetes",
+    "linux",
+    "ci/cd",
+    "terraform",
+    "cloud",
+    "infrastructure",
+    "monitoring",
+    "automation",
+    "bash",
+    "python",
+    "deployment",
+    "devops",
+    "networking",
+    "containers",
+    "git",
+    "github actions",
+    "cloudwatch",
+    "systems",
+  ],
+};
+
+const SOFT_SKILL_TERMS = [
+  "attention to detail",
+  "time management",
+  "hard working",
+  "hardworking",
+  "quick learning",
+  "learning",
+  "communication",
+  "teamwork",
+  "adaptability",
+  "problem solving",
+  "problem-solving",
+  "collaboration",
+  "leadership",
+  "organization",
+  "organized",
+  "work ethic",
+];
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function unique(arr) {
+  return Array.from(new Set(arr));
+}
+
+function escapeHtml(value = "") {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function cleanLine(line) {
+  return line
+    .replace(/\u00A0/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/^[,;:]\s*/, "")
+    .replace(/\s+([,.;:])/g, "$1")
+    .trim();
+}
+
+function normalizeWhitespace(text) {
+  return text
+    .replace(/\r/g, "\n")
+    .replace(/\u00A0/g, " ")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function normalizeImportedText(text) {
+  return text
+    .replace(/\u2022|•/g, "\n• ")
+    .replace(/\s+([,.;:])/g, "$1")
+    .replace(/^[,;:]\s*/gm, "")
+    .replace(
+      /\b(EDUCATION|EXPERIENCE|EMPLOYMENT|PROJECTS|SOFTWARE PROJECTS|TECHNICAL SKILLS|SKILLS|SUMMARY|OBJECTIVE|LEADERSHIP|CERTIFICATIONS|RELEVANT COURSEWORK|SOFT SKILLS)\b/g,
+      "\n$1\n"
+    )
+    .replace(
+      /\b(Education|Experience|Employment|Projects|Software Projects|Technical Skills|Skills|Summary|Objective|Leadership|Certifications|Relevant Coursework|Soft Skills)\b/g,
+      "\n$1\n"
+    )
+    .replace(/([a-z])(\s•)/g, "$1\n• ")
+    .replace(/(\.)(\s•)/g, "$1\n• ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function saveCheckoutState(payload) {
+  try {
+    localStorage.setItem(CHECKOUT_STATE_KEY, JSON.stringify(payload));
+  } catch {}
+}
+
+function restoreCheckoutState() {
+  try {
+    const raw = localStorage.getItem(CHECKOUT_STATE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function isLikelySectionHeader(line) {
+  const clean = line.trim().toLowerCase().replace(/[:|]/g, "");
+  if (!clean) return false;
+  if (SECTION_HEADER_KEYWORDS.includes(clean)) return true;
+  if (clean.length <= 34 && /^[A-Z\s&]+$/.test(line.trim())) return true;
+  return false;
+}
+
+function isPlaceholderLine(line) {
+  const clean = line.trim().toLowerCase();
+  return (
+    /^\[.*\]$/.test(clean) ||
+    clean.includes("[phone") ||
+    clean.includes("[e-mail") ||
+    clean.includes("[email") ||
+    clean.includes("[address") ||
+    clean.includes("phone number") ||
+    clean.includes("email address") ||
+    clean.includes("e-mail address") ||
+    clean.includes("home address")
+  );
+}
+
+function isBullet(line) {
+  return /^[•\-*·]\s*/.test(line);
+}
+
+function stripBullet(line) {
+  return line.replace(/^[•\-*·]\s*/, "").trim();
+}
+
+function startsWithActionVerb(line) {
+  const clean = stripBullet(line).toLowerCase();
+  return ACTION_VERBS.some((verb) => clean.startsWith(verb));
+}
+
+function startsWithWeakPhrase(line) {
+  const clean = stripBullet(line).toLowerCase();
+  return WEAK_STARTERS.some(
+    (phrase) => clean.startsWith(phrase) || clean.includes(phrase)
+  );
+}
+
+function hasNumberOrMetric(line) {
+  return (
+    /\d/.test(line) ||
+    /\b(percent|percentage|users|customers|clients|records|datasets|hours|minutes|days|weeks|months|years|gpa|latency|throughput|accuracy|revenue|traffic|downloads|requests)\b/i.test(
+      line
+    ) ||
+    /%/.test(line) ||
+    /\b\d+k\b/i.test(line) ||
+    /\b\d+x\b/i.test(line)
+  );
+}
+
+function hasImpactLanguage(line) {
+  const lower = line.toLowerCase();
+  return IMPACT_WORDS.some((word) => lower.includes(word));
+}
+
+function hasToolOrTech(line) {
+  const lower = line.toLowerCase();
+  return TECHNICAL_SIGNALS.some((signal) => lower.includes(signal));
+}
+
+function isSoftSkillOnlyLine(line) {
+  const clean = cleanLine(line)
+    .toLowerCase()
+    .replace(/^[,;: -]+/, "");
+  if (!clean || /\d/.test(clean) || hasToolOrTech(clean)) return false;
+
+  const parts = clean
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (parts.length < 2) return false;
+
+  const matches = parts.filter((part) =>
+    SOFT_SKILL_TERMS.some((term) => part.includes(term))
+  );
+
+  return matches.length >= Math.max(2, parts.length - 1);
+}
+
+function getFirstMatch(text, regex) {
+  const match = text.match(regex);
+  return match ? match[0] : "";
+}
+
+function getAllMatches(text, regex) {
+  const matches = text.match(regex);
+  return matches ? matches : [];
+}
+
+function getRealEmail(text) {
+  if (/\[(e-?mail|email) address\]/i.test(text)) return "";
+  return getFirstMatch(text, /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+}
+
+function getRealPhone(text) {
+  if (/\[phone number\]/i.test(text)) return "";
+  return getFirstMatch(text, /(\+?\d[\d\s().-]{7,}\d)/);
+}
+
+function getLinkedIn(text) {
+  return getFirstMatch(text, /https?:\/\/[^\s]*linkedin[^\s]*/i);
+}
+
+function getGithub(text) {
+  return getFirstMatch(text, /https?:\/\/[^\s]*github[^\s]*/i);
+}
+
+function getPortfolio(text) {
+  const urls = getAllMatches(text, /https?:\/\/[^\s)]+/gi);
+  const extra = urls.find(
+    (url) => !/linkedin|github/i.test(url) && !/mailto:/i.test(url)
+  );
+  return extra || "";
+}
+
+function sanitizeLocation(location, enteredName) {
+  if (!location) return "";
+
+  let clean = cleanLine(location);
+
+  if (enteredName) {
+    const lowerName = enteredName.toLowerCase();
+    if (clean.toLowerCase().includes(lowerName)) {
+      const fallback = clean.match(
+        /([A-Z][a-z]+(?:\s[A-Z][a-z]+){0,2},\s?[A-Z]{2})$/
+      );
+      clean = fallback ? fallback[1] : "";
+    }
+  }
+
+  return clean;
+}
+
+function getLocationLine(lines) {
+  const locationRegex = /\b[A-Z][a-z]+(?:\s[A-Z][a-z]+){0,2},\s?[A-Z]{2}\b/;
+  const earlyLine = lines.slice(0, 8).find((line) => locationRegex.test(line));
+  if (earlyLine) {
+    const match = earlyLine.match(locationRegex);
+    return match ? match[0] : "";
+  }
+  return "";
+}
+
+function getParsedLines(text) {
+  const baseLines = normalizeImportedText(normalizeWhitespace(text))
+    .split("\n")
+    .map((line) => cleanLine(line))
+    .filter(Boolean);
+
+  const expanded = [];
+
+  baseLines.forEach((line) => {
+    if (line.includes("•") && !line.startsWith("•")) {
+      line
+        .split("•")
+        .map((chunk, index) => (index === 0 ? chunk : `• ${chunk}`))
+        .map((chunk) => cleanLine(chunk))
+        .filter(Boolean)
+        .forEach((chunk) => expanded.push(chunk));
+      return;
+    }
+
+    if (
+      line.length > 220 &&
+      /\. /.test(line) &&
+      !isLikelySectionHeader(line) &&
+      !line.startsWith("•")
+    ) {
+      line
+        .split(/(?<=\.)\s+/)
+        .map((chunk) => cleanLine(chunk))
+        .filter(Boolean)
+        .forEach((chunk) => expanded.push(chunk));
+      return;
+    }
+
+    expanded.push(line);
+  });
+
+  return expanded;
+}
+
+function inferSections(lines) {
+  const sections = {};
+  let currentSection = "other";
+  sections[currentSection] = [];
+
+  lines.forEach((line) => {
+    const clean = cleanLine(line);
+    if (!clean) return;
+
+    if (isLikelySectionHeader(clean)) {
+      currentSection = clean.toLowerCase().replace(/[:|]/g, "");
+      if (!sections[currentSection]) sections[currentSection] = [];
+    } else {
+      if (!sections[currentSection]) sections[currentSection] = [];
+      sections[currentSection].push(clean);
+    }
+  });
+
+  return sections;
+}
+
+function flattenSectionLines(sections, names) {
+  return names.flatMap((name) => sections[name] || []);
+}
+
+function isUsefulContentLine(line) {
+  const lower = line.toLowerCase();
+  if (!line) return false;
+  if (line.length < 10) return false;
+  if (isLikelySectionHeader(line)) return false;
+  if (isPlaceholderLine(line)) return false;
+  if (isSoftSkillOnlyLine(line)) return false;
+  if (
+    /^(education|experience|employment|projects|software projects|skills|technical skills|soft skills|relevant coursework|coursework|major|minor|gpa)$/i.test(
+      lower
+    )
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function looksLikeDateRange(line) {
+  return /(jan|january|feb|february|mar|march|apr|april|may|jun|june|jul|july|aug|august|sep|sept|september|oct|october|nov|november|dec|december|\d{4}|present)/i.test(
+    line
+  );
+}
+
+function looksLikeEntryHeading(line, type) {
+  if (!line || isLikelySectionHeader(line) || isBullet(line)) return false;
+  if (line.length > 160) return false;
+  if (isSoftSkillOnlyLine(line)) return false;
+
+  if (type === "experience") {
+    return (
+      /\b(intern|engineer|developer|server|associate|founder|co-founder|analyst|assistant|manager|specialist|consultant|research|coordinator|firmware|software)\b/i.test(
+        line
+      ) ||
+      (looksLikeDateRange(line) && / - | – | — /.test(line)) ||
+      / - | – | — /.test(line)
+    );
+  }
+
+  if (type === "projects") {
+    return (
+      /\b(project|app|application|platform|dashboard|system|website|tool|model|database|pipeline|resume|sensor)\b/i.test(
+        line
+      ) || / - | – | — /.test(line)
+    );
+  }
+
+  return false;
+}
+
+function groupEntries(lines, type) {
+  const entries = [];
+  let current = null;
+
+  lines.forEach((rawLine) => {
+    const line = cleanLine(rawLine);
+    if (!line || isPlaceholderLine(line) || isSoftSkillOnlyLine(line)) return;
+
+    if (isBullet(line)) {
+      if (!current) current = { heading: "", meta: "", bullets: [] };
+      current.bullets.push(stripBullet(line));
+      return;
+    }
+
+    if (looksLikeEntryHeading(line, type)) {
+      if (
+        current &&
+        (current.heading || current.meta || current.bullets.length)
+      ) {
+        entries.push(current);
+      }
+      current = { heading: line, meta: "", bullets: [] };
+      return;
+    }
+
+    if (!current) {
+      current = { heading: "", meta: "", bullets: [] };
+    }
+
+    if (
+      !current.meta &&
+      line.length <= 120 &&
+      !hasImpactLanguage(line) &&
+      !hasToolOrTech(line)
+    ) {
+      current.meta = line;
+    } else {
+      current.bullets.push(line);
+    }
+  });
+
+  if (current && (current.heading || current.meta || current.bullets.length)) {
+    entries.push(current);
+  }
+
+  return entries
+    .map((entry) => ({
+      heading: cleanLine(entry.heading),
+      meta: cleanLine(entry.meta),
+      bullets: unique(entry.bullets.map((b) => cleanLine(b)).filter(Boolean)),
+    }))
+    .filter(
+      (entry) =>
+        entry.heading ||
+        entry.meta ||
+        (entry.bullets && entry.bullets.length > 0)
+    );
+}
+
+function pickTopUniqueLines(lines, count) {
+  return unique(lines.map((line) => cleanLine(line)).filter(Boolean)).slice(
+    0,
+    count
+  );
+}
+
+function getRoleSpecificSkillSuggestions(role) {
+  if (role === "Data Science") {
+    return ["python", "sql", "pandas", "numpy", "machine learning"];
+  }
+  if (role === "Frontend / Web Developer") {
+    return ["html", "css", "javascript", "react", "responsive"];
+  }
+  if (role === "Backend / Full Stack Developer") {
+    return ["api", "database", "node", "sql", "deployment"];
+  }
+  if (role === "DevOps / Cloud / Infrastructure") {
+    return ["aws", "docker", "linux", "automation", "cloud"];
+  }
+  return ["python", "java", "sql", "algorithms", "projects"];
+}
+
+function extractMetricReasons(line) {
+  const values = unique(
+    getAllMatches(line, /\b\d+(?:\.\d+)?%?|\b\d+k\b|\b\d+x\b/gi)
+  );
+  const reasons = [];
+
+  if (/%/.test(line) || /\bpercent|percentage\b/i.test(line)) {
+    reasons.push("percentage");
+  }
+  if (
+    /\busers|customers|clients|downloads|visitors|records|datasets|requests\b/i.test(
+      line
+    )
+  ) {
+    reasons.push("volume");
+  }
+  if (/\bhours|minutes|days|weeks|months|years\b/i.test(line)) {
+    reasons.push("time");
+  }
+  if (/\baccuracy|latency|throughput|performance|speed\b/i.test(line)) {
+    reasons.push("performance");
+  }
+  if (/\brevenue|sales|cost|saved\b/i.test(line)) {
+    reasons.push("business");
+  }
+  if (values.length && reasons.length === 0) {
+    reasons.push("numeric signal");
+  }
+
+  return {
+    line,
+    values,
+    reasons,
+  };
+}
+
+function tidySentence(text) {
+  return cleanLine(
+    text
+      .replace(/\s+([,.;:])/g, "$1")
+      .replace(/\s{2,}/g, " ")
+      .replace(/\s+\./g, ".")
+      .replace(/\s+,/g, ",")
+      .replace(/^,\s*/, "")
+  )
+    .replace(/^[a-z]/, (m) => m.toUpperCase())
+    .replace(/([^.!?])$/, "$1.");
+}
+
+function rewriteLine(line) {
+  const base = stripBullet(line);
+  const lower = base.toLowerCase();
+
+  const replacements = [
+    ["helped", "Built"],
+    ["assisted with", "Supported"],
+    ["assisted", "Supported"],
+    ["worked on", "Built"],
+    ["responsible for", "Managed"],
+    ["duties included", "Handled"],
+    ["tasked with", "Executed"],
+    ["contributed to", "Contributed to"],
+    ["support", "Supported"],
+    ["supported", "Supported"],
+    ["made", "Built"],
+    ["created", "Developed"],
+    ["did", "Executed"],
+    ["used", "Applied"],
+    ["learned", "Applied"],
+    ["participated in", "Contributed to"],
+    ["was part of", "Collaborated on"],
+    ["contribute", "Contributed to"],
+    ["assist", "Supported"],
+    ["currently working on", "Building"],
+    ["utilized", "Used"],
+  ];
+
+  let rewritten = base;
+
+  for (const [from, to] of replacements) {
+    if (lower.startsWith(from)) {
+      const rest = base.slice(from.length).trim();
+      rewritten = `${to} ${rest}`.trim();
+      break;
+    }
+  }
+
+  if (!startsWithActionVerb(`• ${rewritten}`)) {
+    if (
+      hasToolOrTech(rewritten) ||
+      /project|platform|system|database|api|tool/i.test(rewritten)
+    ) {
+      rewritten = `Built ${rewritten.charAt(0).toLowerCase()}${rewritten.slice(
+        1
+      )}`;
+    } else {
+      rewritten = `Delivered ${rewritten
+        .charAt(0)
+        .toLowerCase()}${rewritten.slice(1)}`;
+    }
+  }
+
+  return tidySentence(rewritten);
+}
+
+function buildRoleSummary(role, technicalMatches) {
+  const topTech = technicalMatches.slice(0, 4);
+
+  if (role === "Software Engineer") {
+    return `Software engineering candidate with experience in ${
+      topTech.length
+        ? topTech.join(", ")
+        : "software development, databases, and technical projects"
+    }. Strong foundation in building practical systems, writing clean code, and solving technical problems.`;
+  }
+
+  if (role === "Data Science") {
+    return `Data-focused candidate with experience in ${
+      topTech.length
+        ? topTech.join(", ")
+        : "Python, SQL, data analysis, and machine learning"
+    }. Strong foundation in data cleaning, analysis, and translating datasets into usable insights.`;
+  }
+
+  if (role === "Frontend / Web Developer") {
+    return `Frontend-focused candidate with experience in ${
+      topTech.length ? topTech.join(", ") : "HTML, CSS, JavaScript, and React"
+    }. Strong foundation in building responsive interfaces and improving user-facing web experiences.`;
+  }
+
+  if (role === "Backend / Full Stack Developer") {
+    return `Full-stack candidate with experience in ${
+      topTech.length
+        ? topTech.join(", ")
+        : "APIs, databases, backend systems, and web applications"
+    }. Strong foundation in application logic, data flow, and practical product development.`;
+  }
+
+  return `Infrastructure-focused candidate with experience in ${
+    topTech.length
+      ? topTech.join(", ")
+      : "cloud systems, Linux, automation, and deployment"
+  }. Strong foundation in reliable systems, operational tooling, and practical technical execution.`;
+}
+
+function rewriteEntries(entries) {
+  return entries.map((entry) => {
+    const fallbackBullets = [];
+    if (entry.bullets.length === 0) {
+      if (entry.meta) fallbackBullets.push(entry.meta);
+      if (entry.heading) fallbackBullets.push(entry.heading);
+    }
+
+    const bulletsToRewrite =
+      entry.bullets.length > 0 ? entry.bullets : fallbackBullets.slice(0, 2);
+
+    return {
+      heading: entry.heading,
+      meta: entry.meta,
+      bullets: bulletsToRewrite.map((bullet) => rewriteLine(bullet)),
+    };
+  });
+}
+
+function buildResumeObject({
+  name,
+  role,
+  location,
+  email,
+  phone,
+  linkedin,
+  github,
+  portfolio,
+  summary,
+  educationLines,
+  experienceEntries,
+  projectEntries,
+  skillsLines,
+}) {
+  return {
+    name: name || "Candidate",
+    role,
+    location,
+    email,
+    phone,
+    linkedin,
+    github,
+    portfolio,
+    summary,
+    educationLines,
+    experienceEntries,
+    projectEntries,
+    skillsLines,
+  };
+}
+
+function splitDateFromHeading(text) {
+  if (!text) return { main: "", date: "" };
+
+  const regex =
+    /(.+?)\s+((?:Jan|January|Feb|February|Mar|March|Apr|April|May|Jun|June|Jul|July|Aug|August|Sep|Sept|September|Oct|October|Nov|November|Dec|December)[^]*?(?:Present|\d{4}))$/i;
+
+  const match = text.match(regex);
+  if (match) {
+    return {
+      main: cleanLine(match[1]),
+      date: cleanLine(match[2]),
+    };
+  }
+
+  return { main: text, date: "" };
+}
+
+function renderEducationHtml(lines) {
+  return lines
+    .map((line) => {
+      if (isBullet(line)) {
+        return `<div class="edu-bullet">• ${escapeHtml(
+          stripBullet(line)
+        )}</div>`;
+      }
+      return `<div class="edu-line">${escapeHtml(line)}</div>`;
+    })
+    .join("");
+}
+
+function renderEntriesHtml(entries) {
+  return entries
+    .map((entry) => {
+      const headingParts = splitDateFromHeading(entry.heading);
+      const titleText = headingParts.main || entry.heading || "";
+      const dateText = headingParts.date || "";
+
+      return `
+        <div class="resume-entry">
+          ${
+            titleText || entry.meta || dateText
+              ? `
+            <div class="entry-head">
+              <div class="entry-title">${escapeHtml(titleText)}</div>
+              <div class="entry-date">${escapeHtml(dateText)}</div>
+            </div>
+            ${
+              entry.meta
+                ? `<div class="entry-meta">${escapeHtml(entry.meta)}</div>`
+                : ""
+            }
+          `
+              : ""
+          }
+          ${
+            entry.bullets.length
+              ? `<ul>${entry.bullets
+                  .map((bullet) => `<li>${escapeHtml(bullet)}</li>`)
+                  .join("")}</ul>`
+              : ""
+          }
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function renderSkillsHtml(lines) {
+  return lines
+    .map((line) => {
+      const clean = stripBullet(line);
+      if (clean.includes(":")) {
+        const [label, ...rest] = clean.split(":");
+        return `<div class="skill-line"><span class="skill-label">${escapeHtml(
+          label.trim()
+        )}:</span><span>${escapeHtml(rest.join(":").trim())}</span></div>`;
+      }
+      return `<div class="skill-line"><span>${escapeHtml(clean)}</span></div>`;
+    })
+    .join("");
+}
+
+function renderContactHtml(item) {
+  const safe = escapeHtml(item);
+  if (item.startsWith("http")) {
+    return `<a href="${safe}" target="_blank" rel="noopener noreferrer">${safe}</a>`;
+  }
+  return safe;
+}
+
+function buildResumeHtml(resume) {
+  const leftContacts = [resume.location, resume.github, resume.linkedin].filter(
+    Boolean
+  );
+  const rightContacts = [resume.phone, resume.email, resume.portfolio].filter(
+    Boolean
+  );
+
+  return `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="UTF-8" />
+        <title>${escapeHtml(resume.name)} Resume</title>
+        <style>
+          :root {
+            --text: #111827;
+            --muted: #475569;
+            --accent: #2563eb;
+          }
+
+          * { box-sizing: border-box; }
+
+          body {
+            margin: 18px 22px;
+            font-family: "Times New Roman", Georgia, serif;
+            color: var(--text);
+            background: white;
+          }
+
+          .resume {
+            max-width: 900px;
+            margin: 0 auto;
+          }
+
+          .header-grid {
+            display: grid;
+            grid-template-columns: 1fr 1.2fr 1fr;
+            gap: 14px;
+            align-items: start;
+            margin-bottom: 8px;
+          }
+
+          .header-side {
+            font-size: 11.5px;
+            line-height: 1.25;
+            min-height: 44px;
+          }
+
+          .header-side.right {
+            text-align: right;
+          }
+
+          .contact-line {
+            color: var(--text);
+            margin-bottom: 3px;
+            word-break: break-word;
+          }
+
+          .contact-line a {
+            color: var(--accent);
+            text-decoration: none;
+          }
+
+          .name-block {
+            text-align: center;
+          }
+
+          .name {
+            margin: 0;
+            font-size: 26px;
+            line-height: 1.02;
+            letter-spacing: 0.04em;
+            font-variant: small-caps;
+            font-weight: 700;
+          }
+
+          .role {
+            margin-top: 5px;
+            font-size: 12px;
+            color: var(--accent);
+            font-family: Arial, Helvetica, sans-serif;
+            font-weight: 700;
+          }
+
+          .section {
+            margin-top: 11px;
+          }
+
+          .section-title {
+            margin: 0 0 4px;
+            padding-bottom: 2px;
+            border-bottom: 1.5px solid #1f2937;
+            font-variant: small-caps;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.03em;
+            color: #1f2937;
+          }
+
+          .summary {
+            font-size: 11.4px;
+            line-height: 1.28;
+            margin-top: 4px;
+          }
+
+          .edu-line,
+          .edu-bullet,
+          .entry-meta,
+          .skill-line,
+          li {
+            font-size: 11.1px;
+            line-height: 1.24;
+          }
+
+          .edu-line + .edu-line,
+          .edu-bullet + .edu-bullet {
+            margin-top: 2px;
+          }
+
+          .resume-entry {
+            margin-top: 5px;
+          }
+
+          .entry-head {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 10px;
+            align-items: baseline;
+            margin-bottom: 1px;
+          }
+
+          .entry-title {
+            font-size: 11.8px;
+            font-weight: 700;
+          }
+
+          .entry-date {
+            font-size: 10.9px;
+            font-style: italic;
+            white-space: nowrap;
+          }
+
+          .entry-meta {
+            margin-bottom: 2px;
+          }
+
+          ul {
+            margin: 2px 0 0 16px;
+            padding: 0;
+          }
+
+          li {
+            margin-bottom: 2px;
+          }
+
+          .skill-line {
+            margin-bottom: 2px;
+          }
+
+          .skill-label {
+            font-weight: 700;
+          }
+
+          @media print {
+            body {
+              margin: 12px 16px;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="resume">
+          <div class="header-grid">
+            <div class="header-side">
+              ${leftContacts
+                .map(
+                  (item) =>
+                    `<div class="contact-line">${renderContactHtml(item)}</div>`
+                )
+                .join("")}
+            </div>
+
+            <div class="name-block">
+              <h1 class="name">${escapeHtml(resume.name)}</h1>
+              <div class="role">${escapeHtml(resume.role)}</div>
+            </div>
+
+            <div class="header-side right">
+              ${rightContacts
+                .map(
+                  (item) =>
+                    `<div class="contact-line">${renderContactHtml(item)}</div>`
+                )
+                .join("")}
+            </div>
+          </div>
+
+          <section class="section">
+            <div class="section-title">Professional Summary</div>
+            <div class="summary">${escapeHtml(resume.summary)}</div>
+          </section>
+
+          ${
+            resume.educationLines.length
+              ? `
+            <section class="section">
+              <div class="section-title">Education</div>
+              ${renderEducationHtml(resume.educationLines)}
+            </section>
+          `
+              : ""
+          }
+
+          ${
+            resume.experienceEntries.length
+              ? `
+            <section class="section">
+              <div class="section-title">Experience</div>
+              ${renderEntriesHtml(resume.experienceEntries)}
+            </section>
+          `
+              : ""
+          }
+
+          ${
+            resume.projectEntries.length
+              ? `
+            <section class="section">
+              <div class="section-title">Projects</div>
+              ${renderEntriesHtml(resume.projectEntries)}
+            </section>
+          `
+              : ""
+          }
+
+          ${
+            resume.skillsLines.length
+              ? `
+            <section class="section">
+              <div class="section-title">Skills</div>
+              ${renderSkillsHtml(resume.skillsLines)}
+            </section>
+          `
+              : ""
+          }
+        </div>
+      </body>
+    </html>
+  `;
+}
+
+function buildResumeText(resume) {
+  const lines = [];
+  lines.push(resume.name);
+  lines.push(resume.role);
+  lines.push(
+    [
+      resume.location,
+      resume.github,
+      resume.linkedin,
+      resume.phone,
+      resume.email,
+      resume.portfolio,
+    ]
+      .filter(Boolean)
+      .join(" | ")
+  );
+  lines.push("");
+  lines.push("PROFESSIONAL SUMMARY");
+  lines.push(resume.summary);
+  lines.push("");
+
+  if (resume.educationLines.length) {
+    lines.push("EDUCATION");
+    resume.educationLines.forEach((line) => lines.push(stripBullet(line)));
+    lines.push("");
+  }
+
+  if (resume.experienceEntries.length) {
+    lines.push("EXPERIENCE");
+    resume.experienceEntries.forEach((entry) => {
+      if (entry.heading) lines.push(entry.heading);
+      if (entry.meta) lines.push(entry.meta);
+      entry.bullets.forEach((bullet) => lines.push(`• ${bullet}`));
+      lines.push("");
+    });
+  }
+
+  if (resume.projectEntries.length) {
+    lines.push("PROJECTS");
+    resume.projectEntries.forEach((entry) => {
+      if (entry.heading) lines.push(entry.heading);
+      if (entry.meta) lines.push(entry.meta);
+      entry.bullets.forEach((bullet) => lines.push(`• ${bullet}`));
+      lines.push("");
+    });
+  }
+
+  if (resume.skillsLines.length) {
+    lines.push("SKILLS");
+    resume.skillsLines.forEach((line) => lines.push(stripBullet(line)));
+  }
+
+  return lines.join("\n");
+}
+
+function downloadBlob(blob, filename) {
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+function downloadResumeHtml(resume, filename = "rewritten_resume.html") {
+  const blob = new Blob([buildResumeHtml(resume)], {
+    type: "text/html;charset=utf-8",
+  });
+  downloadBlob(blob, filename);
+}
+
+async function downloadResumeDocx(resume, filename = "rewritten_resume.docx") {
+  const children = [
+    new Paragraph({
+      heading: HeadingLevel.TITLE,
+      children: [new TextRun({ text: resume.name, bold: true })],
+      spacing: { after: 60 },
+    }),
+    new Paragraph({
+      children: [
+        new TextRun({ text: resume.role, color: "2563EB", bold: true }),
+      ],
+      spacing: { after: 60 },
+    }),
+    new Paragraph({
+      children: [
+        new TextRun(
+          [
+            resume.location,
+            resume.github,
+            resume.linkedin,
+            resume.phone,
+            resume.email,
+            resume.portfolio,
+          ]
+            .filter(Boolean)
+            .join(" | ")
+        ),
+      ],
+      spacing: { after: 100 },
+    }),
+    new Paragraph({
+      heading: HeadingLevel.HEADING_1,
+      children: [new TextRun("Professional Summary")],
+      spacing: { after: 40 },
+    }),
+    new Paragraph({
+      children: [new TextRun(resume.summary)],
+      spacing: { after: 100 },
+    }),
+  ];
+
+  if (resume.educationLines.length) {
+    children.push(
+      new Paragraph({
+        heading: HeadingLevel.HEADING_1,
+        children: [new TextRun("Education")],
+        spacing: { after: 40 },
+      })
+    );
+    resume.educationLines.forEach((line) => {
+      children.push(
+        new Paragraph({
+          children: [new TextRun(stripBullet(line))],
+          spacing: { after: 30 },
+        })
+      );
+    });
+  }
+
+  if (resume.experienceEntries.length) {
+    children.push(
+      new Paragraph({
+        heading: HeadingLevel.HEADING_1,
+        children: [new TextRun("Experience")],
+        spacing: { before: 60, after: 40 },
+      })
+    );
+
+    resume.experienceEntries.forEach((entry) => {
+      if (entry.heading) {
+        children.push(
+          new Paragraph({
+            children: [new TextRun({ text: entry.heading, bold: true })],
+            spacing: { after: 20 },
+          })
+        );
+      }
+      if (entry.meta) {
+        children.push(
+          new Paragraph({
+            children: [new TextRun({ text: entry.meta, italics: true })],
+            spacing: { after: 20 },
+          })
+        );
+      }
+      entry.bullets.forEach((bullet) => {
+        children.push(
+          new Paragraph({
+            text: bullet,
+            bullet: { level: 0 },
+            spacing: { after: 20 },
+          })
+        );
+      });
+    });
+  }
+
+  if (resume.projectEntries.length) {
+    children.push(
+      new Paragraph({
+        heading: HeadingLevel.HEADING_1,
+        children: [new TextRun("Projects")],
+        spacing: { before: 60, after: 40 },
+      })
+    );
+
+    resume.projectEntries.forEach((entry) => {
+      if (entry.heading) {
+        children.push(
+          new Paragraph({
+            children: [new TextRun({ text: entry.heading, bold: true })],
+            spacing: { after: 20 },
+          })
+        );
+      }
+      if (entry.meta) {
+        children.push(
+          new Paragraph({
+            children: [new TextRun({ text: entry.meta, italics: true })],
+            spacing: { after: 20 },
+          })
+        );
+      }
+      entry.bullets.forEach((bullet) => {
+        children.push(
+          new Paragraph({
+            text: bullet,
+            bullet: { level: 0 },
+            spacing: { after: 20 },
+          })
+        );
+      });
+    });
+  }
+
+  if (resume.skillsLines.length) {
+    children.push(
+      new Paragraph({
+        heading: HeadingLevel.HEADING_1,
+        children: [new TextRun("Skills")],
+        spacing: { before: 60, after: 40 },
+      })
+    );
+    resume.skillsLines.forEach((line) => {
+      children.push(
+        new Paragraph({
+          children: [new TextRun(stripBullet(line))],
+          spacing: { after: 20 },
+        })
+      );
+    });
+  }
+
+  const doc = new Document({
+    sections: [
+      {
+        properties: {
+          page: {
+            margin: {
+              top: 540,
+              right: 540,
+              bottom: 540,
+              left: 540,
+            },
+          },
+        },
+        children,
+      },
+    ],
+  });
+
+  const blob = await Packer.toBlob(doc);
+  downloadBlob(blob, filename);
+}
+
+function printResumePdf(resume) {
+  const html = buildResumeHtml(resume);
+  const popup = window.open("", "_blank");
+  if (!popup) return;
+  popup.document.open();
+  popup.document.write(html);
+  popup.document.close();
+  popup.focus();
+  setTimeout(() => {
+    popup.print();
+  }, 500);
+}
+
+async function copyTextToClipboard(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const area = document.createElement("textarea");
+  area.value = text;
+  area.style.position = "fixed";
+  area.style.opacity = "0";
+  document.body.appendChild(area);
+  area.focus();
+  area.select();
+  document.execCommand("copy");
+  area.remove();
+}
+
+async function extractPdfTextFromFile(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const typedArray = new Uint8Array(arrayBuffer);
+  const pdf = await pdfjsLib.getDocument({ data: typedArray }).promise;
+
+  let extractedText = "";
+
+  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum += 1) {
+    const page = await pdf.getPage(pageNum);
+    const textContent = await page.getTextContent();
+
+    const items = (textContent.items || [])
+      .filter((item) => item && typeof item.str === "string" && item.str.trim())
+      .map((item) => ({
+        str: item.str,
+        x: item.transform?.[4] || 0,
+        y: item.transform?.[5] || 0,
+      }))
+      .sort((a, b) => {
+        if (Math.abs(b.y - a.y) > 2) return b.y - a.y;
+        return a.x - b.x;
+      });
+
+    const lines = [];
+    let currentLine = [];
+    let currentY = null;
+
+    items.forEach((item) => {
+      if (currentY === null || Math.abs(item.y - currentY) <= 2) {
+        currentLine.push(item);
+        currentY = currentY === null ? item.y : currentY;
+      } else {
+        lines.push(currentLine);
+        currentLine = [item];
+        currentY = item.y;
+      }
+    });
+
+    if (currentLine.length) lines.push(currentLine);
+
+    const pageLines = lines
+      .map((lineItems) => {
+        const sorted = [...lineItems].sort((a, b) => a.x - b.x);
+        return cleanLine(sorted.map((item) => item.str).join(" "));
+      })
+      .filter(Boolean);
+
+    extractedText += `${pageLines.join("\n")}\n\n`;
+  }
+
+  return extractedText;
+}
+
+function ScoreBar({ label, value, note, color = "var(--blue)" }) {
+  return (
+    <div className="score-bar-row">
+      <div className="score-bar-top">
+        <span>{label}</span>
+        <span>{value}/10</span>
+      </div>
+      <div className="score-bar-track">
+        <div
+          className="score-bar-fill"
+          style={{ width: `${(value / 10) * 100}%`, background: color }}
+        />
+      </div>
+      {note ? <div className="score-bar-note">{note}</div> : null}
+    </div>
+  );
+}
+
+function Tag({ children, variant = "default" }) {
+  return <span className={`tag ${variant}`}>{children}</span>;
+}
+
+function getScoreLabel(score) {
+  if (score >= 90) return "Excellent";
+  if (score >= 80) return "Strong";
+  if (score >= 68) return "Solid";
+  if (score >= 52) return "Needs work";
+  return "Weak";
+}
+
+function getScoreMeaning(score) {
+  if (score >= 90) {
+    return "This already looks strong. Most of your resume is communicating value clearly.";
+  }
+  if (score >= 80) {
+    return "This is in a strong range, but a few improvements could make it feel more polished and credible.";
+  }
+  if (score >= 68) {
+    return "There is solid material here, but some of it is not being presented strongly enough yet.";
+  }
+  if (score >= 52) {
+    return "Your resume has potential, but important signals are weak, missing, or unclear.";
+  }
+  return "Right now the resume is probably underselling you. The structure, evidence, or wording needs work.";
+}
+
+function getStatMeaning(label, value, analyzed) {
+  if (!analyzed) return "Run analysis to see what this means.";
+
+  if (label === "Achievement lines") {
+    if (value >= 8)
+      return "Good volume. You have enough bullet-style accomplishments to work with.";
+    if (value >= 4)
+      return "Decent base, but adding more accomplishment-driven bullets would help.";
+    return "Too few clear accomplishment lines. Add bullets that show what you did and why it mattered.";
+  }
+
+  if (label === "Lines with metrics") {
+    if (value >= 4)
+      return "Strong proof. Multiple bullets show measurable evidence.";
+    if (value >= 2)
+      return "Some proof is present, but more numbers would make the resume more credible.";
+    return "Very little measurable proof. Add numbers like %, users, time saved, revenue, accuracy, or scale.";
+  }
+
+  if (label === "Technical depth") {
+    if (value >= 10) return "Strong technical signal coverage for the role.";
+    if (value >= 5)
+      return "Some relevant technical signals are present, but there is room to strengthen them.";
+    return "The resume is not showing enough relevant technical keywords or tools yet.";
+  }
+
+  if (label === "Word count") {
+    if (value >= 350 && value <= 700)
+      return "This is in a healthy range for a focused one-page technical resume.";
+    if (value < 350)
+      return "This may be too thin. You may not be showing enough projects, bullets, or detail.";
+    return "This may be too dense. Tightening wording could make the resume easier to scan.";
+  }
+
+  return "This stat helps explain how your score was calculated.";
+}
+
+const JOB_DESCRIPTION_SIGNAL_POOL = unique([
+  ...Object.values(KEYWORD_POOL).flat(),
+  ...TECHNICAL_SIGNALS,
+  "testing",
+  "automation",
+  "scalability",
+  "performance",
+  "accessibility",
+  "architecture",
+  "distributed systems",
+  "microservices",
+  "analytics",
+  "data visualization",
+  "data pipelines",
+  "cloud",
+  "deployment",
+  "monitoring",
+  "security",
+  "collaboration",
+  "leadership",
+  "communication",
+  "agile",
+  "product thinking",
+]);
+
+function extractImportantTermsFromJobDescription(text, role) {
+  const normalized = normalizeWhitespace(text || "").toLowerCase();
+  if (!normalized) return [];
+
+  const roleTerms = KEYWORD_POOL[role] || [];
+  const directMatches = unique(
+    [...roleTerms, ...JOB_DESCRIPTION_SIGNAL_POOL].filter((term) =>
+      normalized.includes(term.toLowerCase())
+    )
+  );
+
+  if (directMatches.length >= 6) {
+    return directMatches.slice(0, 12);
+  }
+
+  const fallbackWords = unique(
+    normalized
+      .replace(/[^a-z0-9+#./\s-]/g, " ")
+      .split(/\s+/)
+      .filter(
+        (word) =>
+          word.length > 3 &&
+          ![
+            "with",
+            "that",
+            "this",
+            "from",
+            "have",
+            "will",
+            "your",
+            "role",
+            "team",
+            "work",
+            "years",
+            "year",
+            "using",
+            "build",
+            "strong",
+            "experience",
+            "preferred",
+            "required",
+            "ability",
+          ].includes(word)
+      )
+  );
+
+  return unique([...directMatches, ...fallbackWords]).slice(0, 12);
+}
+
+function buildTargetedSummary(summary, role, focusTerms) {
+  if (!focusTerms.length) return summary;
+  const sentence = tidySentence(summary);
+  const targeted = focusTerms.slice(0, 4).join(", ");
+  return tidySentence(
+    `${sentence.replace(
+      /[.]+$/,
+      ""
+    )}. Targeted for ${role.toLowerCase()} roles emphasizing ${targeted}`
+  );
+}
+
+function buildTargetedSkillsLines(skillsLines, focusTerms) {
+  if (!focusTerms.length) return skillsLines;
+
+  const existing = skillsLines.join(" ").toLowerCase();
+  const missing = focusTerms.filter(
+    (term) => !existing.includes(term.toLowerCase())
+  );
+
+  const injectedLine = `Target Role Focus: ${focusTerms
+    .slice(0, 6)
+    .join(", ")}`;
+
+  return unique([injectedLine, ...skillsLines, ...missing]).slice(0, 12);
+}
+
+function buildTargetedEntries(entries, focusTerms) {
+  if (!focusTerms.length) return entries;
+
+  const termsToUse = focusTerms.slice(0, 4);
+
+  return entries.map((entry, idx) => {
+    if (!entry.bullets.length || idx > 1) return entry;
+
+    const firstBullet = entry.bullets[0];
+    const lower = firstBullet.toLowerCase();
+    const missingTerms = termsToUse.filter((term) => !lower.includes(term));
+
+    if (!missingTerms.length) return entry;
+
+    const enrichedFirstBullet = tidySentence(
+      `${firstBullet.replace(/[.]+$/, "")} with emphasis on ${missingTerms
+        .slice(0, 2)
+        .join(" and ")}`
+    );
+
+    return {
+      ...entry,
+      bullets: [enrichedFirstBullet, ...entry.bullets.slice(1)],
+    };
+  });
+}
+
+function getSubscoreMeaning(type, value, analyzed) {
+  if (!analyzed) return "Run analysis to see what this score means.";
+
+  if (type === "ATS") {
+    if (value >= 85) {
+      return "Your resume is structured and keyworded well for automated screening.";
+    }
+    if (value >= 70) {
+      return "Your ATS signal is decent, but some keywords or formatting could be stronger.";
+    }
+    return "ATS systems may miss your fit because the structure or keyword targeting is not clear enough yet.";
+  }
+
+  if (value >= 85) {
+    return "A recruiter would likely see strong ownership, impact, and technical credibility quickly.";
+  }
+  if (value >= 70) {
+    return "There is a solid story here, but some bullets still need clearer impact and stronger wording.";
+  }
+  return "A recruiter may feel the resume is underselling what you actually did.";
+}
+
+function getJobDescriptionMatchMeaning(signalCount, matchPercent) {
+  if (!signalCount) {
+    return "Paste a job description to tailor the premium rewrite toward a specific role.";
+  }
+  if (matchPercent >= 80) {
+    return "Strong alignment. The premium rewrite is already speaking closely to the job description.";
+  }
+  if (matchPercent >= 55) {
+    return "Good base alignment. The rewrite is picking up several target signals, with room to tailor further.";
+  }
+  return "The job description is introducing important signals that are not fully reflected yet. The premium rewrite is trying to close that gap.";
+}
+
+const APP_ID = APP_IDS.RESUME_SUITE;
+KEYWORD_POOL["Software Engineer Intern"] = KEYWORD_POOL["Software Engineer"];
+KEYWORD_POOL["Backend Engineer"] =
+  KEYWORD_POOL["Backend / Full Stack Developer"];
+KEYWORD_POOL["Frontend Engineer"] = KEYWORD_POOL["Frontend / Web Developer"];
+KEYWORD_POOL["Full-Stack Engineer"] =
+  KEYWORD_POOL["Backend / Full Stack Developer"];
+KEYWORD_POOL["Cloud Engineer"] =
+  KEYWORD_POOL["DevOps / Cloud / Infrastructure"];
+const TOOL_ROLE_OPTIONS = [
+  "Software Engineer Intern",
+  "Software Engineer",
+  "Backend Engineer",
+  "Frontend Engineer",
+  "Full-Stack Engineer",
+  "Data Science",
+  "Cloud Engineer",
+];
+
+function downloadTextFile(filename, content) {
+  const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+  downloadBlob(blob, filename);
+}
+
+function formatImportErrorMessage(error) {
+  if (!error)
+    return "Could not read that file. Try a PDF, DOCX, or TXT version.";
+  if (error.message) return error.message;
+  return "Could not read that file. Try a PDF, DOCX, or TXT version.";
+}
+
+export default function App() {
+  const graderRef = useRef(null);
+  const premiumRef = useRef(null);
+
+  const [currentUser, setCurrentUser] = useState(getCurrentUser());
+  const [authOpen, setAuthOpen] = useState(false);
+  const [authMode, setAuthMode] = useState("login");
+  const [authUsername, setAuthUsername] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authMessage, setAuthMessage] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
+  const [pendingPremiumIntent, setPendingPremiumIntent] = useState(false);
+
+  const [name, setName] = useState("Dylan Ackerman");
+  const [jobTitle, setJobTitle] = useState("Software Engineer Intern");
+  const [resumeText, setResumeText] = useState("");
+  const [uploadedFileName, setUploadedFileName] = useState("");
+  const [isParsing, setIsParsing] = useState(false);
+  const [parseError, setParseError] = useState("");
+  const [analyzed, setAnalyzed] = useState(false);
+  const [statusMessage, setStatusMessage] = useState("");
+  const [premiumMessage, setPremiumMessage] = useState("");
+  const [premiumUnlocked, setPremiumUnlocked] = useState(
+    hasPurchasedApp(APP_ID)
+  );
+  const [premiumVariant, setPremiumVariant] = useState("ATS Clean");
+  const [premiumJobDescription, setPremiumJobDescription] = useState("");
+  const [coverLetter, setCoverLetter] = useState(null);
+  const [copyNotice, setCopyNotice] = useState("");
+
+  useEffect(() => {
+    setPremiumUnlocked(hasPurchasedApp(APP_ID));
+    setCurrentUser(getCurrentUser());
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const checkoutState = params.get("checkout");
+    const sessionId = params.get("session_id");
+
+    if (checkoutState === "success" && sessionId && getCurrentUser()) {
+      confirmCheckout(sessionId).then(async (result) => {
+        if (result.ok) {
+          const refreshed = await refreshCurrentUser();
+          const user = refreshed.user || result.user || getCurrentUser();
+          setCurrentUser(user);
+          setPremiumUnlocked(hasPurchasedApp(APP_ID));
+          setPremiumMessage(
+            result.message ||
+              "Premium access is active on this signed-in account."
+          );
+        } else {
+          setPremiumMessage(
+            result.message ||
+              "Payment completed, but premium could not be confirmed yet."
+          );
+        }
+      });
+
+      params.delete("checkout");
+      params.delete("session_id");
+      const next = `${window.location.pathname}${
+        params.toString() ? `?${params.toString()}` : ""
+      }${window.location.hash}`;
+      window.history.replaceState({}, "", next);
+      return;
+    }
+
+    if (checkoutState === "cancelled") {
+      setPremiumMessage(
+        "Checkout was cancelled. You can unlock premium whenever you're ready."
+      );
+      params.delete("checkout");
+      const next = `${window.location.pathname}${
+        params.toString() ? `?${params.toString()}` : ""
+      }${window.location.hash}`;
+      window.history.replaceState({}, "", next);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (window.location.hash === "#grader") {
+      setTimeout(() => {
+        graderRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }, 120);
+    }
+  }, []);
+
+  const handleFileUpload = async (event) => {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+
+    setIsParsing(true);
+    setParseError("");
+    setUploadedFileName(file.name);
+    setAnalyzed(false);
+    setStatusMessage("");
+    setPremiumMessage("");
+
+    try {
+      const extension = (file.name.toLowerCase().split(".").pop() || "").trim();
+      if (extension === "txt") {
+        const text = await file.text();
+        setResumeText(normalizeImportedText(normalizeWhitespace(text)));
+      } else if (extension === "docx") {
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await mammoth.extractRawText({ arrayBuffer });
+        setResumeText(normalizeImportedText(normalizeWhitespace(result.value)));
+      } else if (extension === "pdf") {
+        const extractedText = await extractPdfTextFromFile(file);
+        setResumeText(
+          normalizeImportedText(normalizeWhitespace(extractedText))
+        );
+      } else {
+        throw new Error(
+          "Unsupported file type. Upload a PDF, DOCX, or TXT file."
+        );
+      }
+    } catch (error) {
+      setParseError(formatImportErrorMessage(error));
+      setResumeText("");
+    } finally {
+      setIsParsing(false);
+    }
+  };
+
+  const results = useMemo(() => {
+    const text = resumeText.trim();
+
+    if (!text) {
+      const emptyResume = buildResumeObject({
+        name: "",
+        role: "Resume",
+        location: "",
+        email: "",
+        phone: "",
+        linkedin: "",
+        github: "",
+        portfolio: "",
+        summary: "",
+        educationLines: [],
+        experienceEntries: [],
+        projectEntries: [],
+        skillsLines: [],
+      });
+
+      return {
+        score: 0,
+        atsScore: 0,
+        recruiterScore: 0,
+        wordCount: 0,
+        keywordMatches: [],
+        technicalMatches: [],
+        missingRoleSignals: [],
+        achievementLineCount: 0,
+        linesWithMetricsCount: 0,
+        impactLineCount: 0,
+        bulletCount: 0,
+        metricCoveragePercent: 0,
+        strongVerbCoveragePercent: 0,
+        checks: [],
+        strengths: [],
+        suggestions: [],
+        detectedSections: [],
+        beforeAfterPairs: [],
+        metricEvidenceDetails: [],
+        strongExamples: [],
+        weakExamples: [],
+        structureEvidence: [],
+        scoreDrivers: [],
+        jobDescriptionKeywords: [],
+        matchedJobDescriptionKeywords: [],
+        missingJobDescriptionKeywords: [],
+        jobDescriptionMatchPercent: 0,
+        breakdown: {
+          structure: 0,
+          keywords: 0,
+          projects: 0,
+          experienceImpact: 0,
+          metrics: 0,
+          achievementStrength: 0,
+        },
+        sectionScores: {
+          header: 0,
+          education: 0,
+          experience: 0,
+          projects: 0,
+          skills: 0,
+        },
+        premiumVariants: {
+          "ATS Clean": emptyResume,
+          "Recruiter Friendly": emptyResume,
+        },
+      };
+    }
+
+    const normalized = normalizeImportedText(normalizeWhitespace(text));
+    const lower = normalized.toLowerCase();
+    const lines = getParsedLines(normalized);
+    const words = normalized.split(/\s+/).filter(Boolean);
+    const wordCount = words.length;
+
+    const sections = inferSections(lines);
+    const detectedSections = Object.keys(sections).filter(
+      (sectionName) =>
+        sectionName !== "other" && (sections[sectionName] || []).length
+    );
+
+    const summaryLines = flattenSectionLines(sections, [
+      "summary",
+      "professional summary",
+      "profile",
+      "objective",
+    ]).filter(isUsefulContentLine);
+
+    const educationLines = pickTopUniqueLines(
+      flattenSectionLines(sections, [
+        "education",
+        "relevant coursework",
+        "coursework",
+      ]).filter(isUsefulContentLine),
+      10
+    );
+
+    const rawExperienceLines = flattenSectionLines(sections, [
+      "experience",
+      "work experience",
+      "professional experience",
+      "employment",
+      "leadership",
+    ]).filter(isUsefulContentLine);
+
+    const rawProjectLines = flattenSectionLines(sections, [
+      "projects",
+      "selected projects",
+      "project experience",
+      "technical projects",
+      "software projects",
+    ]).filter(isUsefulContentLine);
+
+    const rawSkillsLines = flattenSectionLines(sections, [
+      "skills",
+      "technical skills",
+      "soft skills",
+    ])
+      .map((line) => stripBullet(line))
+      .filter(Boolean)
+      .filter((line) => !isSoftSkillOnlyLine(line));
+
+    const experienceEntries = groupEntries(rawExperienceLines, "experience");
+    const projectEntries = groupEntries(rawProjectLines, "projects");
+
+    let achievementLines = [
+      ...experienceEntries.flatMap((entry) => entry.bullets),
+      ...projectEntries.flatMap((entry) => entry.bullets),
+    ].filter(isUsefulContentLine);
+
+    if (achievementLines.length < 4) {
+      achievementLines = [
+        ...achievementLines,
+        ...lines
+          .filter((line) => isUsefulContentLine(stripBullet(line)))
+          .map((line) => stripBullet(line)),
+      ];
+    }
+
+    achievementLines = unique(achievementLines).slice(0, 24);
+
+    const allBullets = lines.filter((line) => isBullet(line));
+    const linesWithMetrics = achievementLines.filter((line) =>
+      hasNumberOrMetric(line)
+    );
+    const metricEvidenceDetails = linesWithMetrics
+      .slice(0, 6)
+      .map((line) => extractMetricReasons(line));
+    const strongActionLines = achievementLines.filter((line) =>
+      startsWithActionVerb(`• ${line}`)
+    );
+    const impactLineCount = achievementLines.filter((line) =>
+      hasImpactLanguage(line)
+    ).length;
+    const weakLines = achievementLines.filter((line) =>
+      startsWithWeakPhrase(line)
+    );
+
+    const keywordMatches = unique(
+      (
+        KEYWORD_POOL[jobTitle] ||
+        KEYWORD_POOL["Software Engineer"] ||
+        []
+      ).filter((keyword) => lower.includes(keyword))
+    );
+    const technicalMatches = unique(
+      TECHNICAL_SIGNALS.filter((signal) => lower.includes(signal))
+    );
+    const missingRoleSignals = getRoleSpecificSkillSuggestions(jobTitle).filter(
+      (signal) => !lower.includes(signal)
+    );
+
+    const jobDescriptionKeywords = extractImportantTermsFromJobDescription(
+      premiumJobDescription,
+      jobTitle
+    );
+    const matchedJobDescriptionKeywords = jobDescriptionKeywords.filter(
+      (term) => lower.includes(term.toLowerCase())
+    );
+    const missingJobDescriptionKeywords = jobDescriptionKeywords.filter(
+      (term) => !lower.includes(term.toLowerCase())
+    );
+    const jobDescriptionMatchPercent = jobDescriptionKeywords.length
+      ? Math.round(
+          (matchedJobDescriptionKeywords.length /
+            jobDescriptionKeywords.length) *
+            100
+        )
+      : 0;
+
+    const email = getRealEmail(normalized);
+    const phone = getRealPhone(normalized);
+    const linkedIn = getLinkedIn(normalized);
+    const github = getGithub(normalized);
+    const portfolio = getPortfolio(normalized);
+    const detectedName = name || getParsedLines(normalized)[0] || "Candidate";
+    const location = sanitizeLocation(getLocationLine(lines), detectedName);
+
+    const hasContactInfo = Boolean(
+      email || phone || linkedIn || github || portfolio
+    );
+    const hasEducation =
+      educationLines.length > 0 ||
+      /education|university|college|school|bachelor|gpa|major|minor/i.test(
+        normalized
+      );
+    const hasExperience =
+      experienceEntries.length > 0 ||
+      /experience|employment|internship|co-founder|founder/i.test(normalized);
+    const hasProjects =
+      projectEntries.length > 0 ||
+      /projects|project experience/i.test(normalized);
+    const hasSkills =
+      rawSkillsLines.length > 0 || /skills|technical skills/i.test(normalized);
+    const hasSummary =
+      summaryLines.length > 0 ||
+      /summary|professional summary|profile|objective/i.test(normalized);
+    const hasSoftSkillsSection = /soft skills/i.test(normalized);
+
+    const namedSectionCount = [
+      hasEducation,
+      hasExperience,
+      hasProjects,
+      hasSkills,
+      hasSummary,
+    ].filter(Boolean).length;
+
+    const structureEvidence = [];
+    if (email) structureEvidence.push("Email detected");
+    if (phone) structureEvidence.push("Phone detected");
+    if (linkedIn) structureEvidence.push("LinkedIn detected");
+    if (github) structureEvidence.push("GitHub detected");
+    if (portfolio) structureEvidence.push("Portfolio / website detected");
+    if (hasEducation) structureEvidence.push("Education section detected");
+    if (hasExperience)
+      structureEvidence.push("Experience / employment section detected");
+    if (hasProjects) structureEvidence.push("Projects section detected");
+    if (hasSkills) structureEvidence.push("Skills section detected");
+    if (hasSummary) structureEvidence.push("Summary or objective detected");
+
+    const wordCountBand =
+      wordCount >= 180 && wordCount <= 650
+        ? 1
+        : wordCount >= 140 && wordCount < 180
+        ? 0.65
+        : wordCount > 650 && wordCount <= 850
+        ? 0.45
+        : 0;
+
+    const sectionDensityBand =
+      detectedSections.length >= 5
+        ? 1
+        : detectedSections.length >= 4
+        ? 0.8
+        : detectedSections.length >= 3
+        ? 0.5
+        : 0;
+
+    const achievementBand =
+      achievementLines.length >= 10
+        ? 1
+        : achievementLines.length >= 6
+        ? 0.8
+        : achievementLines.length >= 3
+        ? 0.5
+        : 0.2;
+
+    let structureScore = 0;
+    if (hasContactInfo) structureScore += 2;
+    if (email) structureScore += 1;
+    if (phone || linkedIn || github || portfolio) structureScore += 1;
+    if (hasEducation) structureScore += 1.5;
+    if (hasExperience) structureScore += 1.5;
+    if (hasProjects) structureScore += 1.5;
+    if (hasSkills) structureScore += 1.5;
+    if (hasSummary) structureScore += 0.5;
+    structureScore += wordCountBand + sectionDensityBand;
+    structureScore = clamp(structureScore, 0, 10);
+
+    let keywordScore = 0;
+    keywordScore += Math.min(keywordMatches.length * 0.85, 5.8);
+    keywordScore += Math.min(technicalMatches.length * 0.22, 2.2);
+    if (linkedIn) keywordScore += 0.5;
+    if (github) keywordScore += 0.8;
+    if (portfolio) keywordScore += 0.5;
+    keywordScore = clamp(keywordScore, 0, 10);
+
+    let projectScore = 0;
+    if (hasProjects) projectScore += 4;
+    if (technicalMatches.length >= 4) projectScore += 2;
+    if (impactLineCount >= 2) projectScore += 1.4;
+    if (linesWithMetrics.length >= 1) projectScore += 1;
+    if (
+      /\b(database|api|application|platform|system|model|dashboard|etl|pipeline|cloud|infrastructure|website|app)\b/i.test(
+        normalized
+      )
+    )
+      projectScore += 1.6;
+    projectScore = clamp(projectScore, 0, 10);
+
+    let experienceImpactScore = 0;
+    if (hasExperience) experienceImpactScore += 3.2;
+    experienceImpactScore += Math.min(impactLineCount * 0.9, 3.2);
+    experienceImpactScore += Math.min(strongActionLines.length * 0.45, 2);
+    if (weakLines.length >= 2) experienceImpactScore -= 1.5;
+    experienceImpactScore = clamp(experienceImpactScore, 0, 10);
+
+    let metricsScore = 0;
+    const metricRatio =
+      achievementLines.length > 0
+        ? linesWithMetrics.length / achievementLines.length
+        : 0;
+    if (linesWithMetrics.length >= 6 || metricRatio >= 0.8) metricsScore = 10;
+    else if (linesWithMetrics.length >= 4 || metricRatio >= 0.6)
+      metricsScore = 8.2;
+    else if (linesWithMetrics.length >= 3 || metricRatio >= 0.45)
+      metricsScore = 6.8;
+    else if (linesWithMetrics.length >= 2 || metricRatio >= 0.3)
+      metricsScore = 5.3;
+    else if (linesWithMetrics.length >= 1) metricsScore = 3.5;
+    else metricsScore = achievementLines.length === 0 ? 2 : 2.4;
+    metricsScore = clamp(metricsScore, 0, 10);
+
+    let achievementStrength = 0;
+    if (achievementLines.length >= 8) achievementStrength += 3;
+    else if (achievementLines.length >= 5) achievementStrength += 2.5;
+    else if (achievementLines.length >= 3) achievementStrength += 1.7;
+    else if (achievementLines.length >= 1) achievementStrength += 1;
+    achievementStrength += Math.min(strongActionLines.length * 0.6, 2.4);
+    achievementStrength += Math.min(linesWithMetrics.length * 0.35, 1.8);
+    achievementStrength += Math.min(technicalMatches.length * 0.12, 1.4);
+    achievementStrength += achievementBand;
+    if (weakLines.length === 0) achievementStrength += 0.8;
+    if (weakLines.length >= 3) achievementStrength -= 2;
+    achievementStrength = clamp(achievementStrength, 0, 10);
+
+    const atsScore = Math.round(
+      clamp(
+        structureScore * 3 +
+          keywordScore * 2.8 +
+          metricsScore * 1.7 +
+          (hasContactInfo ? 6 : 0) +
+          (hasProjects ? 4 : 0),
+        0,
+        100
+      )
+    );
+
+    const recruiterScore = Math.round(
+      clamp(
+        experienceImpactScore * 3 +
+          achievementStrength * 2.7 +
+          projectScore * 2.2 +
+          (impactLineCount >= 3 ? 8 : impactLineCount * 2) +
+          (weakLines.length === 0 ? 6 : 0),
+        0,
+        100
+      )
+    );
+
+    let overallScore =
+      atsScore * 0.45 +
+      recruiterScore * 0.55 +
+      Math.min(keywordMatches.length, 5);
+    if (!hasSummary) overallScore -= 1.5;
+    if (wordCount < 120) overallScore -= 10;
+    else if (wordCount < 160) overallScore -= 5;
+    if (wordCount > 950) overallScore -= 5;
+    if (namedSectionCount < 3) overallScore -= 5;
+    if (achievementLines.length === 0) overallScore -= 8;
+    if (!email && !phone && !linkedIn && !github && !portfolio)
+      overallScore -= 8;
+    if (hasSoftSkillsSection) overallScore -= 2;
+    const score = Math.round(clamp(overallScore, 18, 95));
+
+    const sectionScores = {
+      header: Math.round(
+        clamp(
+          (email ? 4 : 0) +
+            (phone ? 2.5 : 0) +
+            (linkedIn || github || portfolio ? 3.5 : 0),
+          0,
+          10
+        )
+      ),
+      education: Math.round(
+        clamp(
+          hasEducation ? 7.5 + (educationLines.length >= 2 ? 1 : 0) : 2,
+          0,
+          10
+        )
+      ),
+      experience: Math.round(clamp(experienceImpactScore, 0, 10)),
+      projects: Math.round(clamp(projectScore, 0, 10)),
+      skills: Math.round(
+        clamp(
+          (hasSkills ? 4 : 0) + Math.min(technicalMatches.length * 0.45, 6),
+          0,
+          10
+        )
+      ),
+    };
+
+    const checks = [
+      {
+        label: "Contact info",
+        passed: Boolean(email && (phone || linkedIn || github || portfolio)),
+      },
+      { label: "Education section", passed: hasEducation },
+      { label: "Experience section", passed: hasExperience },
+      { label: "Projects section", passed: hasProjects },
+      { label: "Skills section", passed: hasSkills },
+      {
+        label: "Achievement lines detected",
+        passed: achievementLines.length >= 3,
+      },
+      { label: "Lines with metrics", passed: linesWithMetrics.length >= 2 },
+      {
+        label: "Strong action language",
+        passed:
+          achievementLines.length > 0 &&
+          strongActionLines.length >=
+            Math.max(1, Math.ceil(achievementLines.length / 3)),
+      },
+      { label: "Role-specific keywords", passed: keywordMatches.length >= 4 },
+      {
+        label: "Professional links",
+        passed: Boolean(linkedIn || github || portfolio),
+      },
+    ];
+
+    const suggestions = [];
+    if (!(email && (phone || linkedIn || github || portfolio)))
+      suggestions.push(
+        "Add complete contact details at the top. A strong header should include email plus phone or a professional link."
+      );
+    if (!hasSummary)
+      suggestions.push(
+        "Add a short professional summary at the top so recruiters immediately understand your fit for the target role."
+      );
+    if (linesWithMetrics.length === 0)
+      suggestions.push(
+        "Add measurable outcomes to more experience or project lines. Numbers make your work feel more credible and higher impact."
+      );
+    else if (
+      linesWithMetrics.length <
+      Math.max(2, Math.ceil(achievementLines.length / 3))
+    )
+      suggestions.push(
+        "A few more lines with numbers would strengthen the resume. Add metrics like users, projects, time saved, datasets processed, or performance improvements."
+      );
+    if (
+      achievementLines.length > 0 &&
+      strongActionLines.length <
+        Math.max(1, Math.ceil(achievementLines.length / 3))
+    )
+      suggestions.push(
+        "More bullets should begin with strong action verbs like built, developed, implemented, optimized, or led."
+      );
+    if (weakLines.length > 0)
+      suggestions.push(
+        "Some bullets still sound passive. Replace phrases like helped, assisted, contributed, or worked on with stronger ownership language."
+      );
+    if (keywordMatches.length < 4)
+      suggestions.push(
+        `Add more role-specific terms for ${jobTitle} so the resume feels more targeted to the position.`
+      );
+    if (!hasProjects)
+      suggestions.push(
+        "Add a dedicated projects section. It gives you more room to show technical skill, ownership, and problem-solving."
+      );
+    if (!linkedIn)
+      suggestions.push(
+        "Add your LinkedIn if it is polished and matches the story your resume tells."
+      );
+    if (!github && jobTitle !== "Data Science")
+      suggestions.push(
+        "Add your GitHub if you have class projects, personal builds, or code samples worth showing."
+      );
+    if (missingRoleSignals.length >= 2)
+      suggestions.push(
+        `Your ${jobTitle.toLowerCase()} positioning could be clearer. Consider adding terms like ${missingRoleSignals
+          .slice(0, 4)
+          .join(", ")}.`
+      );
+    if (hasSoftSkillsSection)
+      suggestions.push(
+        "Remove the separate soft skills section and show those strengths through stronger project and experience bullets instead."
+      );
+
+    const strengths = [];
+    if (technicalMatches.length >= 6)
+      strengths.push("Strong technical keyword coverage for the target role.");
+    if (linesWithMetrics.length >= 2)
+      strengths.push("You already show measurable proof in multiple places.");
+    if (hasProjects)
+      strengths.push(
+        "Projects section helps show initiative and technical depth."
+      );
+    if (strongActionLines.length >= 3)
+      strengths.push("Several bullets already use strong action language.");
+    if (hasContactInfo && linkedIn)
+      strengths.push("Your header already includes core contact signals.");
+
+    const scoreDrivers = [
+      `Detected ${namedSectionCount} named resume sections.`,
+      `${keywordMatches.length} matched role keywords found.`,
+      `${technicalMatches.length} technical signals found.`,
+      `${linesWithMetrics.length} metric-backed bullets detected.`,
+      `${strongActionLines.length} strong action bullets detected.`,
+    ];
+
+    const summary = buildTargetedSummary(
+      summaryLines.join(" ") || buildRoleSummary(jobTitle, technicalMatches),
+      jobTitle,
+      matchedJobDescriptionKeywords.length
+        ? matchedJobDescriptionKeywords
+        : technicalMatches
+    );
+
+    const skillsLines = buildTargetedSkillsLines(
+      rawSkillsLines.length
+        ? rawSkillsLines
+        : buildSkillBuckets(technicalMatches),
+      matchedJobDescriptionKeywords.length
+        ? matchedJobDescriptionKeywords
+        : technicalMatches
+    );
+
+    const rewrittenExperienceEntries = rewriteEntries(
+      experienceEntries.length
+        ? experienceEntries
+        : groupEntries(
+            achievementLines.map((line) => `• ${line}`),
+            "experience"
+          )
+    );
+    const rewrittenProjectEntries = rewriteEntries(
+      projectEntries.length
+        ? projectEntries
+        : groupEntries(
+            achievementLines.map((line) => `• ${line}`),
+            "projects"
+          )
+    );
+    const premiumFocusTerms = matchedJobDescriptionKeywords.length
+      ? matchedJobDescriptionKeywords
+      : jobDescriptionKeywords.length
+      ? jobDescriptionKeywords
+      : technicalMatches;
+    const tailoredSummary = buildTargetedSummary(
+      summary,
+      jobTitle,
+      premiumFocusTerms
+    );
+    const tailoredSkillsLines = buildTargetedSkillsLines(
+      skillsLines,
+      premiumFocusTerms
+    );
+    const recruiterExperienceEntries = buildTargetedEntries(
+      rewrittenExperienceEntries,
+      premiumFocusTerms
+    );
+    const recruiterProjectEntries = buildTargetedEntries(
+      rewrittenProjectEntries,
+      premiumFocusTerms
+    );
+    const tailoredExperienceEntries = premiumJobDescription.trim()
+      ? buildTargetedEntries(rewrittenExperienceEntries, premiumFocusTerms)
+      : rewrittenExperienceEntries;
+    const tailoredProjectEntries = premiumJobDescription.trim()
+      ? buildTargetedEntries(rewrittenProjectEntries, premiumFocusTerms)
+      : rewrittenProjectEntries;
+    const tailoredRecruiterExperienceEntries = premiumJobDescription.trim()
+      ? buildTargetedEntries(recruiterExperienceEntries, premiumFocusTerms)
+      : recruiterExperienceEntries;
+    const tailoredRecruiterProjectEntries = premiumJobDescription.trim()
+      ? buildTargetedEntries(recruiterProjectEntries, premiumFocusTerms)
+      : recruiterProjectEntries;
+
+    const premiumVariants = {
+      "ATS Clean": buildResumeObject({
+        name: detectedName,
+        role: jobTitle,
+        location,
+        email,
+        phone,
+        linkedin: linkedIn,
+        github,
+        portfolio,
+        summary: tailoredSummary,
+        educationLines:
+          educationLines.length > 0
+            ? educationLines
+            : ["Add your education details here."],
+        experienceEntries: tailoredExperienceEntries,
+        projectEntries: tailoredProjectEntries,
+        skillsLines: tailoredSkillsLines,
+      }),
+      "Recruiter Friendly": buildResumeObject({
+        name: detectedName,
+        role: jobTitle,
+        location,
+        email,
+        phone,
+        linkedin: linkedIn,
+        github,
+        portfolio,
+        summary: tailoredSummary,
+        educationLines:
+          educationLines.length > 0
+            ? educationLines
+            : ["Add your education details here."],
+        experienceEntries: tailoredRecruiterExperienceEntries,
+        projectEntries: tailoredRecruiterProjectEntries,
+        skillsLines: tailoredSkillsLines,
+      }),
+    };
+
+    return {
+      score,
+      atsScore,
+      recruiterScore,
+      wordCount,
+      keywordMatches,
+      technicalMatches,
+      missingRoleSignals,
+      achievementLineCount: achievementLines.length,
+      linesWithMetricsCount: linesWithMetrics.length,
+      impactLineCount,
+      bulletCount: allBullets.length,
+      metricCoveragePercent:
+        achievementLines.length > 0
+          ? Math.round(
+              (linesWithMetrics.length / achievementLines.length) * 100
+            )
+          : 0,
+      strongVerbCoveragePercent:
+        achievementLines.length > 0
+          ? Math.round(
+              (strongActionLines.length / achievementLines.length) * 100
+            )
+          : 0,
+      checks,
+      strengths: strengths.slice(0, 5),
+      suggestions: suggestions.slice(0, 6),
+      detectedSections,
+      metricEvidenceDetails,
+      strongExamples: strongActionLines.slice(0, 4),
+      weakExamples: weakLines.slice(0, 4),
+      structureEvidence,
+      scoreDrivers,
+      jobDescriptionKeywords,
+      matchedJobDescriptionKeywords,
+      missingJobDescriptionKeywords,
+      jobDescriptionMatchPercent,
+      breakdown: {
+        structure: Math.round(structureScore),
+        keywords: Math.round(keywordScore),
+        projects: Math.round(projectScore),
+        experienceImpact: Math.round(experienceImpactScore),
+        metrics: Math.round(metricsScore),
+        achievementStrength: Math.round(achievementStrength),
+      },
+      sectionScores,
+      premiumVariants,
+    };
+  }, [resumeText, jobTitle, name, premiumJobDescription]);
+
+  const currentPremiumResume =
+    results.premiumVariants[premiumVariant] ||
+    results.premiumVariants["ATS Clean"];
+  const premiumResumeText = buildResumeText(currentPremiumResume);
+  const coverLetterText = coverLetter ? buildCoverLetterText(coverLetter) : "";
+
+  const handleAuth = async () => {
+    setAuthLoading(true);
+    const action = authMode === "signup" ? createAccount : loginUser;
+    const result = await action({
+      username: authUsername,
+      password: authPassword,
+    });
+    setAuthMessage(result.message || "");
+    if (result.ok) {
+      const user = getCurrentUser();
+      setCurrentUser(user);
+      setAuthPassword("");
+      setPremiumUnlocked(hasPurchasedApp(APP_ID));
+
+      if (pendingPremiumIntent) {
+        setPendingPremiumIntent(false);
+        setAuthOpen(false);
+        setAuthMessage("");
+        setAuthLoading(false);
+        setTimeout(() => {
+          handleUnlockPremium();
+        }, 50);
+        return;
+      }
+
+      setAuthOpen(false);
+    }
+    setAuthLoading(false);
+  };
+
+  const handleLogout = () => {
+    logoutUser();
+    setCurrentUser(null);
+    setPremiumUnlocked(false);
+    setAuthMessage("Signed out.");
+  };
+
+  const runFreeAnalysis = () => {
+    if (!resumeText.trim()) {
+      setStatusMessage("Import a resume file or paste the text first.");
+      return;
+    }
+    setAnalyzed(true);
+    setStatusMessage("Free analysis updated.");
+    setTimeout(() => setStatusMessage(""), 1800);
+  };
+
+  const handleUnlockPremium = async () => {
+    if (!currentUser) {
+      setPendingPremiumIntent(true);
+      setAuthMode("login");
+      setAuthOpen(true);
+      setPremiumMessage(
+        "Sign in to use premium tools before unlocking premium."
+      );
+      return;
+    }
+
+    const result = await startCheckout(
+      APP_ID,
+      `${window.location.origin}${window.location.pathname}#premium-tools`
+    );
+
+    if (result.url) {
+      window.location.href = result.url;
+      return;
+    }
+
+    if (result.ok) {
+      const refreshed = await refreshCurrentUser();
+      setCurrentUser(refreshed.user || getCurrentUser());
+      setPremiumUnlocked(hasPurchasedApp(APP_ID));
+      setPremiumMessage(
+        result.message || "Premium access is active on this signed-in account."
+      );
+      setTimeout(
+        () =>
+          premiumRef.current?.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+          }),
+        120
+      );
+      return;
+    }
+
+    setPremiumMessage(
+      result.message ||
+        "Could not start checkout. Make sure the backend is running and Stripe is configured."
+    );
+  };
+
+  const handleCopy = async (text, label) => {
+    try {
+      await copyTextToClipboard(text);
+      setCopyNotice(`${label} copied to clipboard.`);
+      setTimeout(() => setCopyNotice(""), 1800);
+    } catch (error) {
+      setCopyNotice(`Could not copy the ${label.toLowerCase()} right now.`);
+      setTimeout(() => setCopyNotice(""), 1800);
+    }
+  };
+
+  const handleGeneratePremiumResume = async () => {
+    if (!analyzed) {
+      runFreeAnalysis();
+      return;
+    }
+    if (!premiumUnlocked) {
+      handleUnlockPremium();
+      return;
+    }
+    setPremiumMessage("Premium resume preview is ready below.");
+    setTimeout(
+      () =>
+        premiumRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        }),
+      120
+    );
+  };
+
+  const handleGenerateCoverLetter = async () => {
+    if (!analyzed) {
+      runFreeAnalysis();
+      return;
+    }
+    if (!premiumUnlocked) {
+      handleUnlockPremium();
+      return;
+    }
+    if (!premiumJobDescription.trim()) {
+      setPremiumMessage(
+        "Paste a related job description first so the cover letter can target something specific."
+      );
+      return;
+    }
+
+    const letter = buildCoverLetter({
+      resumeText: premiumResumeText,
+      jobDescription: premiumJobDescription,
+      targetRole: jobTitle,
+      applicantName: currentPremiumResume.name || name || "Applicant",
+      applicantLocation: currentPremiumResume.location,
+      applicantPhone: currentPremiumResume.phone,
+      applicantEmail: currentPremiumResume.email,
+      applicantLinkedIn: currentPremiumResume.linkedin,
+    });
+
+    setCoverLetter(letter);
+    setPremiumMessage("Tailored cover letter generated.");
+    setTimeout(
+      () =>
+        premiumRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        }),
+      120
+    );
+  };
+
+  return (
+    <div className="resume-app-page">
+      <header className="site-topbar">
+        <a className="brand-lockup" href="/">
+          <img
+            className="brand-logo"
+            src={BRAND_LOGO}
+            alt="Ackerman Tools logo"
+          />
+          <div>
+            <div className="brand-name">Ackerman Tools</div>
+            <div className="brand-tag">
+              Resume Upgrade + Cover Letter Generator
+            </div>
+          </div>
+        </a>
+
+        <nav className="topbar-links">
+          <a href="#grader">Free grader</a>
+          <a href="#premium-tools">Premium tools</a>
+          <a href="/">Main hub</a>
+        </nav>
+
+        <div className="topbar-auth-corner">
+          {currentUser ? (
+            <>
+              <div className="auth-corner-copy">
+                <strong>{currentUser.username}</strong>
+                <span>
+                  {premiumUnlocked ? "Premium active" : "Free account"}
+                </span>
+              </div>
+              <button
+                className="secondary-btn secondary-btn-small"
+                type="button"
+                onClick={handleLogout}
+              >
+                Sign out
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="auth-corner-copy">
+                <strong>Sign in</strong>
+                <span>to use premium tools</span>
+              </div>
+              <button
+                className="primary-btn primary-btn-small"
+                type="button"
+                onClick={() => setAuthOpen((value) => !value)}
+              >
+                Sign in
+              </button>
+            </>
+          )}
+        </div>
+      </header>
+
+      {!currentUser && authOpen ? (
+        <div className="auth-modal-shell" role="dialog" aria-modal="true">
+          <div
+            className="auth-modal-backdrop"
+            onClick={() => {
+              setAuthOpen(false);
+              setPendingPremiumIntent(false);
+            }}
+          />
+          <section className="auth-modal-panel">
+            <div className="auth-modal-head">
+              <div>
+                <div className="mini-label">ACCOUNT ACCESS</div>
+                <h3>Sign in to use premium tools</h3>
+                <p className="muted-copy">
+                  Premium stays attached to the signed-in account, so the same
+                  user keeps unlimited access later.
+                </p>
+              </div>
+              <button
+                className="secondary-btn secondary-btn-small"
+                type="button"
+                onClick={() => {
+                  setAuthOpen(false);
+                  setPendingPremiumIntent(false);
+                }}
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="auth-card-form auth-card-form-modal">
+              <div className="auth-toggle-row">
+                <button
+                  className={
+                    authMode === "login"
+                      ? "auth-tab auth-tab-active"
+                      : "auth-tab"
+                  }
+                  type="button"
+                  onClick={() => setAuthMode("login")}
+                >
+                  Sign in
+                </button>
+                <button
+                  className={
+                    authMode === "signup"
+                      ? "auth-tab auth-tab-active"
+                      : "auth-tab"
+                  }
+                  type="button"
+                  onClick={() => setAuthMode("signup")}
+                >
+                  Create account
+                </button>
+              </div>
+              <input
+                className="text-input compact-input"
+                value={authUsername}
+                onChange={(event) => setAuthUsername(event.target.value)}
+                placeholder="username"
+              />
+              <input
+                className="text-input compact-input"
+                value={authPassword}
+                onChange={(event) => setAuthPassword(event.target.value)}
+                placeholder="password"
+                type="password"
+              />
+              <button
+                className="primary-btn auth-submit-btn"
+                type="button"
+                disabled={authLoading}
+                onClick={handleAuth}
+              >
+                {authLoading
+                  ? "Working..."
+                  : authMode === "signup"
+                  ? "Create account"
+                  : "Sign in"}
+              </button>
+              {authMessage ? (
+                <div className="message-inline">{authMessage}</div>
+              ) : null}
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      <section className="tool-overview-row">
+        <div className="overview-copy-block">
+          <div className="mini-pill">
+            Free analysis first. Resume + cover letter upgrade second.
+          </div>
+          <h1>Resume + Cover Letter Upgrade</h1>
+          <p className="overview-copy">
+            Free analysis explains the report in plain language. Premium is the
+            front-and-center offer: one better resume plus a fuller,
+            job-description-based cover letter built from the same resume.
+          </p>
+        </div>
+
+        <div className="overview-card-grid">
+          <div className="overview-card">
+            <div className="mini-label">FREE ANALYSIS</div>
+            <h3>Know what the report means before you ever pay</h3>
+            <p className="muted-copy">
+              Users get two scores, exact evidence, matched keywords, weak
+              bullet flags, and clear explanations so the stats do not feel
+              random.
+            </p>
+            <div className="stack small-stack">
+              <div className="note">
+                ATS + recruiter scores with clear meaning
+              </div>
+              <div className="note">
+                Skill gaps, metric coverage, and weak phrasing callouts
+              </div>
+              <div className="note">
+                Better understanding of what to fix first
+              </div>
+            </div>
+          </div>
+
+          <div
+            className="overview-card overview-card-premium"
+            id="premium-tools"
+          >
+            <div className="mini-label mini-label-invert">PREMIUM UPGRADE</div>
+            <h3>
+              Make the outcome obvious: resume upgrade + cover letter upgrade
+            </h3>
+            <p>
+              Premium does not try to sell ten confusing features. It sells one
+              stronger resume that stays reusable, plus a three-paragraph cover
+              letter generator for related jobs.
+            </p>
+            <div className="premium-pill-grid">
+              <span>One better resume</span>
+              <span>One targeted cover letter</span>
+              <span>Job description shapes the letter</span>
+              <span>Resume stays the source of truth</span>
+            </div>
+            <button
+              className="premium-cta-btn"
+              type="button"
+              onClick={handleUnlockPremium}
+            >
+              See the Premium Upgrade
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {(statusMessage || premiumMessage || parseError) && (
+        <section className="message-row">
+          {statusMessage ? (
+            <div className="message-card">{statusMessage}</div>
+          ) : null}
+          {premiumMessage ? (
+            <div className="message-card message-card-strong">
+              {premiumMessage}
+            </div>
+          ) : null}
+          {parseError ? (
+            <div className="message-card message-card-error">{parseError}</div>
+          ) : null}
+        </section>
+      )}
+
+      <main className="primary-tool-grid" id="grader" ref={graderRef}>
+        <section className="editor-card editor-card-wide">
+          <div className="panel-heading-row">
+            <div>
+              <div className="mini-label">STEP 1</div>
+              <h2>Try the free resume grader first.</h2>
+              <p className="muted-copy lead-copy">
+                Import the resume file or paste the text. The free view explains
+                what is strong and what still needs work.
+              </p>
+            </div>
+            <button
+              className="secondary-btn secondary-btn-large"
+              type="button"
+              onClick={runFreeAnalysis}
+            >
+              Analyze resume
+            </button>
+          </div>
+
+          <div className="two-col-fields">
+            <div>
+              <label className="field-label">Your name</label>
+              <input
+                className="text-input"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="Dylan Ackerman"
+              />
+            </div>
+            <div>
+              <label className="field-label">Target role</label>
+              <select
+                className="text-input"
+                value={jobTitle}
+                onChange={(event) => setJobTitle(event.target.value)}
+              >
+                {TOOL_ROLE_OPTIONS.map((role) => (
+                  <option key={role}>{role}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <label className="field-label">Import resume file</label>
+          <div className="upload-row">
+            <label className="file-button">
+              <input
+                type="file"
+                accept=".pdf,.docx,.txt"
+                onChange={handleFileUpload}
+              />
+              Choose File
+            </label>
+            <span className="file-name">
+              {uploadedFileName || "No file chosen yet"}
+            </span>
+          </div>
+          {isParsing ? (
+            <div className="muted-copy tiny-copy">Reading document…</div>
+          ) : null}
+          {uploadedFileName ? (
+            <div className="muted-copy tiny-copy">
+              Loaded file: {uploadedFileName}
+            </div>
+          ) : null}
+
+          <label className="field-label">Extracted resume text</label>
+          <textarea
+            className="large-textarea extracted-box"
+            value={resumeText}
+            onChange={(event) => {
+              setResumeText(event.target.value);
+              setAnalyzed(false);
+            }}
+            placeholder="Imported resume text will appear here, or you can paste the full resume yourself..."
+          />
+
+          <label className="field-label">
+            Paste a related job description for the premium cover letter
+          </label>
+          <textarea
+            className="medium-textarea"
+            value={premiumJobDescription}
+            onChange={(event) => setPremiumJobDescription(event.target.value)}
+            placeholder="Paste a related job description here..."
+          />
+        </section>
+
+        <aside className="sidebar-stack">
+          <section className="score-card">
+            <div className="score-card-header">
+              <div>
+                <div className="muted-copy subtle-label">Resume score</div>
+                <div className="big-score">
+                  {analyzed ? results.score : 0}/100
+                </div>
+                <div className="score-caption">
+                  {analyzed
+                    ? getScoreLabel(results.score)
+                    : "Upload a resume to start."}
+                </div>
+              </div>
+              <div className="candidate-chip">{jobTitle}</div>
+            </div>
+
+            <div className="score-stats-grid">
+              <div className="mini-stat-card">
+                <span>ATS score</span>
+                <strong>{analyzed ? results.atsScore : 0}</strong>
+              </div>
+              <div className="mini-stat-card">
+                <span>Recruiter score</span>
+                <strong>{analyzed ? results.recruiterScore : 0}</strong>
+              </div>
+              <div className="mini-stat-card">
+                <span>Metric coverage</span>
+                <strong>
+                  {analyzed ? `${results.metricCoveragePercent}%` : "0%"}
+                </strong>
+              </div>
+              <div className="mini-stat-card">
+                <span>Strong verb coverage</span>
+                <strong>
+                  {analyzed ? `${results.strongVerbCoveragePercent}%` : "0%"}
+                </strong>
+              </div>
+            </div>
+
+            <div className="note note-blue">
+              {analyzed
+                ? getScoreMeaning(results.score)
+                : "Run the free grader to see what the score actually means."}
+            </div>
+          </section>
+
+          <section className="premium-side-card">
+            <div className="premium-side-top">
+              <div className="premium-pill-dark">Premium upgrade</div>
+              <div className="price-pill">${PREMIUM_PRICE}</div>
+            </div>
+            <h3>Front and center: resume upgrade + cover letter upgrade</h3>
+            <p className="muted-copy">
+              Sell the outcome fast: one stronger resume users can keep, plus a
+              three-step cover letter builder for related roles.
+            </p>
+            <div className="stack small-stack">
+              <div className="note note-soft">One stronger reusable resume</div>
+              <div className="note note-soft">
+                Three-paragraph cover letter builder (5 sentences each)
+              </div>
+              <div className="note note-soft">
+                Cleaner exports and easier copying
+              </div>
+            </div>
+            <button
+              className="premium-cta-btn premium-cta-wide"
+              type="button"
+              onClick={handleUnlockPremium}
+            >
+              See Resume + Cover Letter Upgrade
+            </button>
+          </section>
+        </aside>
+      </main>
+
+      <section className="dashboard-grid dashboard-grid-top">
+        <div className="dashboard-card">
+          <h3>Visual score map</h3>
+          <div className="score-bar-stack">
+            <ScoreBar
+              label="Structure"
+              value={analyzed ? results.breakdown.structure : 0}
+              note="Header, sections, readability, and layout signals"
+            />
+            <ScoreBar
+              label="Keywords"
+              value={analyzed ? results.breakdown.keywords : 0}
+              note="Role targeting and technical signal coverage"
+            />
+            <ScoreBar
+              label="Projects"
+              value={analyzed ? results.breakdown.projects : 0}
+              note="Project presence and technical depth"
+            />
+            <ScoreBar
+              label="Experience impact"
+              value={analyzed ? results.breakdown.experienceImpact : 0}
+              note="Ownership language and accomplishment framing"
+            />
+            <ScoreBar
+              label="Metrics"
+              value={analyzed ? results.breakdown.metrics : 0}
+              note="How often bullets show proof with numbers"
+            />
+            <ScoreBar
+              label="Achievement strength"
+              value={analyzed ? results.breakdown.achievementStrength : 0}
+              note="Strength of bullets overall"
+            />
+          </div>
+        </div>
+
+        <div className="dashboard-card">
+          <h3>Key stats</h3>
+          <div className="stat-detail-grid">
+            <div className="mini-stat-card tall">
+              <span>Achievement lines</span>
+              <strong>{analyzed ? results.achievementLineCount : 0}</strong>
+              <p>
+                {getStatMeaning(
+                  "Achievement lines",
+                  analyzed ? results.achievementLineCount : 0,
+                  analyzed
+                )}
+              </p>
+            </div>
+            <div className="mini-stat-card tall">
+              <span>Lines with metrics</span>
+              <strong>{analyzed ? results.linesWithMetricsCount : 0}</strong>
+              <p>
+                {getStatMeaning(
+                  "Lines with metrics",
+                  analyzed ? results.linesWithMetricsCount : 0,
+                  analyzed
+                )}
+              </p>
+            </div>
+            <div className="mini-stat-card tall">
+              <span>Technical depth</span>
+              <strong>{analyzed ? results.technicalMatches.length : 0}</strong>
+              <p>
+                {getStatMeaning(
+                  "Technical depth",
+                  analyzed ? results.technicalMatches.length : 0,
+                  analyzed
+                )}
+              </p>
+            </div>
+            <div className="mini-stat-card tall">
+              <span>Word count</span>
+              <strong>{analyzed ? results.wordCount : 0}</strong>
+              <p>
+                {getStatMeaning(
+                  "Word count",
+                  analyzed ? results.wordCount : 0,
+                  analyzed
+                )}
+              </p>
+            </div>
+          </div>
+          <div className="stack small-stack top-gap">
+            {(analyzed ? results.scoreDrivers : []).map((item, idx) => (
+              <div className="note note-blue" key={idx}>
+                {item}
+              </div>
+            ))}
+            {!analyzed ? (
+              <p className="muted-copy">
+                Score drivers will appear here after analysis.
+              </p>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="dashboard-card">
+          <h3>Section ratings</h3>
+          <div className="score-bar-stack compact-bars">
+            <ScoreBar
+              label="Header / Contact"
+              value={analyzed ? results.sectionScores.header : 0}
+            />
+            <ScoreBar
+              label="Education"
+              value={analyzed ? results.sectionScores.education : 0}
+            />
+            <ScoreBar
+              label="Experience"
+              value={analyzed ? results.sectionScores.experience : 0}
+            />
+            <ScoreBar
+              label="Projects"
+              value={analyzed ? results.sectionScores.projects : 0}
+            />
+            <ScoreBar
+              label="Skills"
+              value={analyzed ? results.sectionScores.skills : 0}
+            />
+          </div>
+        </div>
+
+        <div className="dashboard-card">
+          <h3>Detected structure evidence</h3>
+          <div className="stack small-stack">
+            {analyzed && results.structureEvidence.length > 0 ? (
+              results.structureEvidence.map((item, idx) => (
+                <div className="note note-blue" key={idx}>
+                  {item}
+                </div>
+              ))
+            ) : (
+              <p className="muted-copy">
+                Detected structure evidence appears here.
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="dashboard-card">
+          <h3>Keyword matches</h3>
+          <div className="tag-grid">
+            {(analyzed ? results.keywordMatches : []).map((keyword) => (
+              <Tag key={keyword} variant="blue">
+                {keyword}
+              </Tag>
+            ))}
+            {!analyzed ? (
+              <p className="muted-copy">
+                Matched role keywords will appear here.
+              </p>
+            ) : null}
+          </div>
+          <h3 className="subheading">Role gaps</h3>
+          <div className="tag-grid">
+            {(analyzed ? results.missingRoleSignals : [])
+              .slice(0, 8)
+              .map((keyword) => (
+                <Tag key={keyword} variant="soft">
+                  {keyword}
+                </Tag>
+              ))}
+            {analyzed && results.missingRoleSignals.length === 0 ? (
+              <p className="muted-copy">
+                You already cover the main role signals well.
+              </p>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="dashboard-card">
+          <h3>Metric evidence with reasons</h3>
+          <div className="stack small-stack">
+            {(analyzed ? results.metricEvidenceDetails : []).map(
+              (item, idx) => (
+                <div className="metric-card" key={idx}>
+                  <div className="metric-line">• {item.line}</div>
+                  <div className="metric-meta">
+                    <span>
+                      Values:{" "}
+                      {item.values.length ? item.values.join(", ") : "—"}
+                    </span>
+                    <span>
+                      Why counted:{" "}
+                      {item.reasons.length
+                        ? item.reasons.join(", ")
+                        : "numeric signal"}
+                    </span>
+                  </div>
+                </div>
+              )
+            )}
+            {analyzed && results.metricEvidenceDetails.length === 0 ? (
+              <p className="muted-copy">No clear metric lines detected yet.</p>
+            ) : null}
+            {!analyzed ? (
+              <p className="muted-copy">Metric evidence will appear here.</p>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="dashboard-card">
+          <h3>Strong action examples</h3>
+          <div className="stack small-stack">
+            {(analyzed ? results.strongExamples : []).map((item, idx) => (
+              <div className="note" key={idx}>
+                • {item}
+              </div>
+            ))}
+            {analyzed && results.strongExamples.length === 0 ? (
+              <p className="muted-copy">
+                No strong action-language examples detected yet.
+              </p>
+            ) : null}
+            {!analyzed ? (
+              <p className="muted-copy">Strong evidence will appear here.</p>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="dashboard-card">
+          <h3>Weak phrasing found</h3>
+          <div className="stack small-stack">
+            {(analyzed ? results.weakExamples : []).map((item, idx) => (
+              <div className="note" key={idx}>
+                • {item}
+              </div>
+            ))}
+            {analyzed && results.weakExamples.length === 0 ? (
+              <p className="muted-copy">
+                No obvious passive phrasing detected.
+              </p>
+            ) : null}
+            {!analyzed ? (
+              <p className="muted-copy">
+                Weak phrasing flags will appear here.
+              </p>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="dashboard-card">
+          <h3>Checklist</h3>
+          <div className="stack small-stack">
+            {(analyzed ? results.checks : []).map((check) => (
+              <div className="row-item" key={check.label}>
+                <span>{check.label}</span>
+                <span className={check.passed ? "pass" : "missing"}>
+                  {check.passed ? "Pass" : "Missing"}
+                </span>
+              </div>
+            ))}
+            {!analyzed ? (
+              <p className="muted-copy">Your checklist will appear here.</p>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="dashboard-card">
+          <h3>What is already working</h3>
+          <div className="stack small-stack">
+            {(analyzed ? results.strengths : []).map((item, idx) => (
+              <div className="note note-green" key={idx}>
+                {item}
+              </div>
+            ))}
+            {analyzed && results.strengths.length === 0 ? (
+              <p className="muted-copy">
+                Strengths will appear after analysis.
+              </p>
+            ) : null}
+            {!analyzed ? (
+              <p className="muted-copy">
+                Strengths will appear after analysis.
+              </p>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="dashboard-card full-span">
+          <h3>What to improve next</h3>
+          <div className="stack small-stack">
+            {(analyzed ? results.suggestions : []).map((item, idx) => (
+              <div className="note note-warn" key={idx}>
+                {item}
+              </div>
+            ))}
+            {!analyzed ? (
+              <p className="muted-copy">
+                Improvement suggestions appear after analysis.
+              </p>
+            ) : null}
+          </div>
+        </div>
+      </section>
+
+      <section className="strategy-grid">
+        <div className="strategy-card">
+          <div className="mini-label">PREMIUM VALUE</div>
+          <h2>What premium actually gives the user</h2>
+          <ul>
+            <li>One stronger resume they can keep reusing</li>
+            <li>Unlimited fresh cover letters from related job descriptions</li>
+            <li>Cleaner premium outputs and export controls</li>
+          </ul>
+        </div>
+
+        <div className="strategy-card strategy-card-strong">
+          <div className="mini-label">COVER LETTER STRATEGY</div>
+          <h2>
+            How the builder writes the letter before the user presses generate
+          </h2>
+          <ol>
+            <li>
+              Paragraph one explains what the job is for and why the role
+              matters.
+            </li>
+            <li>
+              Paragraph two explains what the candidate actually does using
+              evidence from the resume.
+            </li>
+            <li>
+              Paragraph three maps those strengths to the company’s needs and
+              states the value the candidate would bring.
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <section className="premium-grid" ref={premiumRef}>
+        <section className="editor-card premium-editor">
+          <div className="panel-heading-row">
+            <div>
+              <div className="mini-label">STEP 2</div>
+              <h2>Generate unlimited premium outputs.</h2>
+              <p className="muted-copy">
+                Premium uses the same core resume and turns it into a cleaner
+                upgraded version plus tailored cover letters for related jobs.
+              </p>
+            </div>
+            <span
+              className={
+                premiumUnlocked ? "status-pill status-pill-on" : "status-pill"
+              }
+            >
+              {premiumUnlocked ? "Unlimited premium active" : "Premium locked"}
+            </span>
+          </div>
+
+          <div className="premium-action-stack">
+            <button
+              className="primary-btn"
+              type="button"
+              onClick={handleGeneratePremiumResume}
+            >
+              Generate upgraded resume
+            </button>
+            <button
+              className="secondary-btn"
+              type="button"
+              onClick={handleGenerateCoverLetter}
+            >
+              Generate tailored cover letter
+            </button>
+          </div>
+
+          <div className="variant-toggle-row">
+            {Object.keys(results.premiumVariants).map((variant) => (
+              <button
+                key={variant}
+                type="button"
+                className={
+                  premiumVariant === variant
+                    ? "variant-tab active"
+                    : "variant-tab"
+                }
+                onClick={() => setPremiumVariant(variant)}
+              >
+                {variant}
+              </button>
+            ))}
+          </div>
+
+          <div className="dashboard-card targeting-card">
+            <h3>Job description targeting</h3>
+            <div className="note note-blue">
+              {getJobDescriptionMatchMeaning(
+                results.jobDescriptionKeywords.length,
+                results.jobDescriptionMatchPercent
+              )}
+            </div>
+            {results.jobDescriptionKeywords.length > 0 ? (
+              <>
+                <div className="score-stats-grid compact-top-gap">
+                  <div className="mini-stat-card">
+                    <span>Target signals found</span>
+                    <strong>{results.jobDescriptionKeywords.length}</strong>
+                  </div>
+                  <div className="mini-stat-card">
+                    <span>Current resume match</span>
+                    <strong>{results.jobDescriptionMatchPercent}%</strong>
+                  </div>
+                </div>
+                <h3 className="subheading">Matched signals</h3>
+                <div className="tag-grid">
+                  {results.matchedJobDescriptionKeywords.map((keyword) => (
+                    <Tag key={keyword} variant="blue">
+                      {keyword}
+                    </Tag>
+                  ))}
+                </div>
+                <h3 className="subheading">Signals to emphasize more</h3>
+                <div className="tag-grid">
+                  {results.missingJobDescriptionKeywords.map((keyword) => (
+                    <Tag key={keyword} variant="soft">
+                      {keyword}
+                    </Tag>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <p className="muted-copy">
+                Paste a real job description to see matched and missing target
+                signals here.
+              </p>
+            )}
+          </div>
+        </section>
+
+        <section className="results-card premium-output-card">
+          <div className="mini-label">PREMIUM RESUME</div>
+          <h2>{premiumVariant} preview</h2>
+          <div className="output-actions">
+            <button
+              className="secondary-btn"
+              type="button"
+              onClick={() => handleCopy(premiumResumeText, "Resume")}
+            >
+              Copy resume
+            </button>
+            <button
+              className="secondary-btn"
+              type="button"
+              onClick={() =>
+                downloadTextFile("upgraded_resume.txt", premiumResumeText)
+              }
+            >
+              Download text
+            </button>
+            <button
+              className="secondary-btn"
+              type="button"
+              onClick={() => downloadResumeDocx(currentPremiumResume)}
+            >
+              Download DOCX
+            </button>
+            <button
+              className="secondary-btn"
+              type="button"
+              onClick={() => downloadResumeHtml(currentPremiumResume)}
+            >
+              Download HTML
+            </button>
+            <button
+              className="secondary-btn"
+              type="button"
+              onClick={() => printResumePdf(currentPremiumResume)}
+            >
+              Print / Save PDF
+            </button>
+          </div>
+          <pre className="output-preview">
+            {premiumUnlocked
+              ? premiumResumeText
+              : "Unlock premium to generate the upgraded resume."}
+          </pre>
+        </section>
+
+        <section className="results-card premium-output-card">
+          <div className="mini-label">TAILORED COVER LETTER</div>
+          <h2>Unlimited generations from related jobs after purchase</h2>
+          <div className="output-actions">
+            <button
+              className="secondary-btn"
+              type="button"
+              onClick={() => handleCopy(coverLetterText, "Cover letter")}
+              disabled={!coverLetterText}
+            >
+              Copy cover letter
+            </button>
+            <button
+              className="secondary-btn"
+              type="button"
+              onClick={() =>
+                coverLetter && downloadCoverLetterText(coverLetter)
+              }
+              disabled={!coverLetterText}
+            >
+              Download text
+            </button>
+            <button
+              className="secondary-btn"
+              type="button"
+              onClick={() =>
+                coverLetter && downloadCoverLetterHtml(coverLetter)
+              }
+              disabled={!coverLetterText}
+            >
+              Download HTML
+            </button>
+            <button
+              className="secondary-btn"
+              type="button"
+              onClick={() => coverLetter && printCoverLetterPdf(coverLetter)}
+              disabled={!coverLetterText}
+            >
+              Print / Save PDF
+            </button>
+          </div>
+          <pre className="output-preview">
+            {coverLetterText ||
+              "Tailored cover letters appear here after the user pastes a related job description and clicks generate."}
+          </pre>
+        </section>
+      </section>
+
+      <button
+        className={
+          premiumUnlocked ? "premium-fab premium-fab-active" : "premium-fab"
+        }
+        type="button"
+        onClick={() => {
+          if (premiumUnlocked) {
+            premiumRef.current?.scrollIntoView({
+              behavior: "smooth",
+              block: "start",
+            });
+            return;
+          }
+          handleUnlockPremium();
+        }}
+      >
+        <span className="premium-fab-price">
+          {premiumUnlocked ? "✓" : "$9"}
+        </span>
+        <span className="premium-fab-copy">
+          <strong>
+            {premiumUnlocked ? "Premium active" : "Unlock premium"}
+          </strong>
+          <small>
+            {premiumUnlocked
+              ? "Resume + cover letter tools ready"
+              : currentUser
+              ? "Unlimited upgrades for this account"
+              : "Sign in required first"}
+          </small>
+        </span>
+      </button>
+
+      {copyNotice ? (
+        <div className="floating-copy-notice">{copyNotice}</div>
+      ) : null}
+    </div>
+  );
+}
