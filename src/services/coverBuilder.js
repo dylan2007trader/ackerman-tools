@@ -1,554 +1,389 @@
-const COMMON_SKILLS = [
-  "Python",
-  "Java",
-  "JavaScript",
-  "TypeScript",
-  "React",
-  "Node.js",
-  "Express",
-  "SQL",
-  "PostgreSQL",
-  "MySQL",
-  "SQLite",
-  "Git",
-  "GitHub",
-  "APIs",
-  "REST",
-  "backend",
-  "frontend",
-  "full-stack",
-  "data structures",
-  "algorithms",
-  "object-oriented programming",
-  "testing",
-  "automation",
-  "AWS",
-  "Docker",
-  "Linux",
-  "Pandas",
-  "NumPy",
-  "ETL",
-  "databases",
-  "cloud",
-  "Agile",
-  ".NET",
-  ".NET Core",
-  "Angular",
-  "HTML",
-  "CSS",
-];
+// Cover letter builder
+// All three paragraphs are built directly from the job description and resume text.
 
-function normalizeWhitespace(value = "") {
-  return String(value || "")
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+function normalize(text = "") {
+  return String(text || "")
     .replace(/\r/g, "")
     .replace(/[ \t]+/g, " ")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
 
-function cleanLine(value = "") {
-  return normalizeWhitespace(
-    String(value || "")
-      .replace(/^[-*•\u2022\s]+/, "")
-      .trim()
-  );
-}
-
-function ensureSentence(value = "") {
-  const clean = normalizeWhitespace(value);
-  if (!clean) return "";
-  const withCapital = clean.charAt(0).toUpperCase() + clean.slice(1);
-  return /[.!?]$/.test(withCapital) ? withCapital : `${withCapital}.`;
-}
-
-function unique(values = []) {
-  return [...new Set(values.filter(Boolean))];
-}
-
-function titleCase(text = "") {
-  return String(text || "")
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((word) => {
-      if (/^[A-Z0-9.+#/-]+$/.test(word)) return word;
-      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
-    })
-    .join(" ");
-}
-
-function extractLines(text = "") {
-  return String(text || "")
+function lines(text = "") {
+  return normalize(text)
     .split("\n")
-    .map((line) => cleanLine(line))
+    .map((l) => l.trim().replace(/^[-*•\u2022]\s*/, "").trim())
     .filter(Boolean);
 }
 
-function extractContactInfo(resumeText = "") {
-  const lines = extractLines(resumeText);
-  const header = lines.slice(0, 6);
-
-  const email =
-    header.join(" ").match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0] || "";
-
-  const phone =
-    header
-      .join(" ")
-      .match(/(\+?1[-.\s]?)?(\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})/)?.[0] || "";
-
-  const linkedIn = header.find((line) => /linkedin\.com/i.test(line)) || "";
-  const location =
-    header.find(
-      (line) =>
-        /,\s*[A-Z]{2}\b/.test(line) ||
-        /remote/i.test(line) ||
-        /[A-Za-z]+,\s*[A-Za-z]+/.test(line)
-    ) || "";
-
-  const possibleName =
-    header.find((line) => {
-      if (line.length < 5 || line.length > 40) return false;
-      if (/\d|@|linkedin|github|http/i.test(line)) return false;
-      return /^[A-Za-z .'-]+$/.test(line);
-    }) || "Applicant";
-
-  const lineBits = [location, phone, email].filter(Boolean);
-  if (linkedIn) lineBits.push(linkedIn);
-
-  return {
-    name: titleCase(possibleName),
-    headerLine: lineBits.join(" • "),
-    email,
-    phone,
-    linkedIn,
-    location,
-  };
+function sentence(text = "") {
+  const s = normalize(text);
+  if (!s) return "";
+  const capped = s.charAt(0).toUpperCase() + s.slice(1);
+  return /[.!?]$/.test(capped) ? capped : capped + ".";
 }
 
-function extractEducationSummary(resumeText = "") {
-  const lines = extractLines(resumeText);
-  const educationLine =
-    lines.find((line) =>
-      /university|college|bachelor|master|degree|minor|gpa/i.test(line)
-    ) || "";
-
-  if (!educationLine) {
-    return "computer science student with a practical, project-driven foundation";
-  }
-
-  const cleaned = educationLine
-    .replace(/education/i, "")
-    .replace(/gpa[^,.;]*/gi, "")
-    .replace(/\s{2,}/g, " ")
-    .trim();
-
-  return cleaned
-    ? cleaned.charAt(0).toLowerCase() + cleaned.slice(1)
-    : "computer science student";
+function listPhrase(items = []) {
+  const u = [...new Set(items.filter(Boolean))];
+  if (!u.length) return "";
+  if (u.length === 1) return u[0];
+  if (u.length === 2) return `${u[0]} and ${u[1]}`;
+  return `${u.slice(0, -1).join(", ")}, and ${u[u.length - 1]}`;
 }
 
-function extractSkillsFromText(text = "") {
-  const lower = normalizeWhitespace(text).toLowerCase();
-  return unique(
-    COMMON_SKILLS.filter((skill) => lower.includes(skill.toLowerCase()))
-  );
+// ─── Job description parsing ─────────────────────────────────────────────────
+
+function extractJobTitle(jobDesc = "", fallback = "") {
+  if (fallback) return fallback.charAt(0).toUpperCase() + fallback.slice(1);
+
+  const allLines = lines(jobDesc);
+  // First short line that looks like a job title
+  const candidate = allLines.find((l) => {
+    if (l.length > 90 || l.length < 4) return false;
+    return /engineer|developer|analyst|scientist|intern|designer|manager|lead|architect|specialist/i.test(l);
+  });
+
+  return candidate ? candidate.replace(/^(job title|position|role)\s*[:\-]\s*/i, "").trim() : "this role";
 }
 
-function listToPhrase(items = []) {
-  const clean = unique(items);
-  if (clean.length === 0) return "software fundamentals";
-  if (clean.length === 1) return clean[0];
-  if (clean.length === 2) return `${clean[0]} and ${clean[1]}`;
-  return `${clean.slice(0, -1).join(", ")}, and ${clean[clean.length - 1]}`;
-}
+function extractCompanyName(jobDesc = "") {
+  const allLines = lines(jobDesc);
 
-function rewriteEvidenceLine(line = "") {
-  const clean = cleanLine(line)
-    .replace(/^built co-founded/i, "Co-founded and built")
-    .replace(/^built contributed to to/i, "Contributed to")
-    .replace(/^built supported with/i, "Supported")
-    .replace(/^built\s+/i, "Built ")
-    .replace(/^developed\s+/i, "Developed ")
-    .replace(/^designed\s+/i, "Designed ")
-    .replace(/^managed\s+/i, "Managed ")
-    .replace(/^performed\s+/i, "Performed ")
-    .replace(/\s{2,}/g, " ")
-    .trim();
+  // "Company: Acme" or "at Acme" or "join Acme"
+  const labeled = allLines.find((l) => /^company\s*[:\-]/i.test(l));
+  if (labeled) return labeled.replace(/^company\s*[:\-]\s*/i, "").trim();
 
-  return ensureSentence(clean);
-}
-
-function extractEvidence(resumeText = "") {
-  const lines = extractLines(resumeText);
-
-  const bulletLines = lines.filter((line) =>
-    /^(built|developed|designed|created|implemented|led|managed|wrote|performed|delivered|analyzed|engineered|supported|co-founded|optimized|resolved)/i.test(
-      line
-    )
-  );
-
-  const experienceLike = lines.filter((line) =>
-    /project|platform|database|resume|application|software|tool|api|analysis|etl|marketing|data/i.test(
-      line
-    )
-  );
-
-  return unique([...bulletLines, ...experienceLike])
-    .map((line) => rewriteEvidenceLine(line))
-    .filter(Boolean)
-    .slice(0, 6);
-}
-
-function extractJobTitle(jobDescription = "", fallbackRole = "") {
-  const lines = extractLines(jobDescription);
-  const firstGoodLine =
-    lines.find((line) =>
-      /engineer|developer|analyst|intern|scientist|specialist/i.test(line)
-    ) || "";
-
-  if (fallbackRole) return titleCase(fallbackRole);
-  if (firstGoodLine && firstGoodLine.length < 90) return firstGoodLine;
-  return "Software Engineering role";
-}
-
-function extractCompanyName(jobDescription = "") {
-  const lines = extractLines(jobDescription);
-  const labeled = lines.find((line) => /^company\s*:/i.test(line));
-  if (labeled) return labeled.replace(/^company\s*:/i, "").trim();
-
-  const atMatch = normalizeWhitespace(jobDescription).match(
-    /\bat\s+([A-Z][A-Za-z0-9& .-]{2,40})/
-  );
-  if (atMatch?.[1]) return atMatch[1].trim();
+  const atMatch = normalize(jobDesc).match(/\b(?:at|join|joining|with)\s+([A-Z][A-Za-z0-9&., ]{2,40}?)(?:\.|,|\s+to\s|\s+and\s|$)/);
+  if (atMatch?.[1]) return atMatch[1].trim().replace(/[,.]$/, "");
 
   return "";
 }
 
-function extractJobFocusSentence(jobDescription = "") {
-  const lines = extractLines(jobDescription);
-  const candidate = lines.find((line) => {
-    if (line.length < 25 || line.length > 150) return false;
-    if (/benefits|equal opportunity|salary|compensation/i.test(line))
-      return false;
-    return /build|develop|design|support|improve|maintain|power|workflow|platform|services?|software|applications?|systems?/i.test(
-      line
-    );
+/**
+ * Pull the most meaningful requirement sentences from the job description.
+ * Looks for lines that describe what the candidate will do or must have.
+ */
+function extractRequirements(jobDesc = "") {
+  if (!jobDesc.trim()) return [];
+
+  const allLines = lines(jobDesc);
+
+  const SKIP = /benefits|equal opportunity|salary|compensation|perks|pto|vacation|insurance|disability|401k|eeo|applicants will|we are an|about us|our mission|our culture/i;
+  const WANT = /you will|you'll|responsible for|build|develop|design|support|create|maintain|implement|collaborate|work with|analyze|deliver|own|lead|manage|write|test|improve|architect|deploy|optimize/i;
+
+  const requirement = allLines.filter((l) => {
+    if (l.length < 20 || l.length > 220) return false;
+    if (SKIP.test(l)) return false;
+    return WANT.test(l);
   });
 
-  if (!candidate) {
-    return "This opportunity stands out because it combines meaningful technical work with room to keep growing as an engineer.";
-  }
-
-  return ensureSentence(
-    `This opportunity stands out because it focuses on ${candidate
-      .replace(/^you will\s+/i, "")
-      .replace(/^responsibilities include\s+/i, "")
-      .replace(/^developing\s+/i, "building ")
-      .replace(/^building\s+/i, "building ")
-      .replace(/^designing\s+/i, "designing ")
-      .replace(/^supporting\s+/i, "supporting ")
-      .replace(/[.:]+$/g, "")}`
-  );
-}
-
-function buildParagraphOne({
-  jobTitle,
-  companyName,
-  requestedSkills,
-  educationSummary,
-}) {
-  const skillPhrase = listToPhrase(requestedSkills.slice(0, 4));
-  return [
-    ensureSentence(
-      `I am excited to apply for the ${jobTitle}${
-        companyName ? ` at ${companyName}` : ""
-      }`
-    ),
-    extractJobFocusSentence,
-    ensureSentence(
-      `From the description, I can see that your team values ${skillPhrase}`
-    ),
-    ensureSentence(
-      `As someone with a background in ${educationSummary}, I am eager to contribute in a role where strong fundamentals and steady growth both matter`
-    ),
-    ensureSentence(
-      "It is exactly the type of opportunity where I can bring energy, coachability, and practical execution from day one"
-    ),
-  ];
-}
-
-function buildParagraphTwo({ educationSummary, evidence, resumeSkills }) {
-  const evidenceLines = evidence.slice(0, 3);
-  while (evidenceLines.length < 3) {
-    evidenceLines.push(
-      "I have continued strengthening my technical foundation through coursework, projects, and hands-on problem solving."
-    );
-  }
-
-  return [
-    ensureSentence(
-      `My experience already reflects the kind of work this role requires, combining ${educationSummary} with hands-on technical projects`
-    ),
-    evidenceLines[0],
-    evidenceLines[1],
-    evidenceLines[2],
-    ensureSentence(
-      `Across those experiences, I have strengthened ${listToPhrase(
-        resumeSkills.slice(0, 5)
-      )} while learning how to write cleaner code, solve problems methodically, and contribute consistently`
-    ),
-  ];
-}
-
-function buildParagraphThree({
-  companyName,
-  requestedSkills,
-  resumeSkills,
-  jobTitle,
-}) {
-  const mappedSkills = unique([...requestedSkills, ...resumeSkills]).slice(
-    0,
-    5
-  );
-  return [
-    ensureSentence(
-      "That background would let me add value quickly in the areas your team cares about most"
-    ),
-    ensureSentence(
-      `I can bring ${listToPhrase(
-        mappedSkills
-      )} to work that supports the goals of this ${jobTitle}`
-    ),
-    ensureSentence(
-      "Just as importantly, I bring clear communication, follow-through, and a willingness to keep improving when requirements change"
-    ),
-    ensureSentence(
-      "I would approach the role with the goal of delivering reliable work, learning quickly, and making it easier for the team to move projects forward"
-    ),
-    ensureSentence(
-      `I would be excited to contribute that value to ${
-        companyName || "your team"
-      }`
-    ),
-  ];
-}
-
-function htmlEscape(value = "") {
-  return String(value || "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-export function buildCoverLetter({
-  resumeText = "",
-  jobDescription = "",
-  targetRole = "",
-  applicantName = "",
-  applicantLocation = "",
-  applicantPhone = "",
-  applicantEmail = "",
-  applicantLinkedIn = "",
-}) {
-  const contact = extractContactInfo(resumeText);
-  const jobTitle = extractJobTitle(
-    jobDescription,
-    targetRole || "Software Engineer"
-  );
-  const companyName = extractCompanyName(jobDescription);
-  const educationSummary = extractEducationSummary(resumeText);
-  const requestedSkills = extractSkillsFromText(jobDescription);
-  const resumeSkills = extractSkillsFromText(resumeText);
-  const evidence = extractEvidence(resumeText);
-  const jobFocusSentence = extractJobFocusSentence(jobDescription);
-
-  const paragraphOne = [
-    ensureSentence(
-      `I am excited to apply for the ${jobTitle}${
-        companyName ? ` at ${companyName}` : ""
-      }`
-    ),
-    jobFocusSentence,
-    ensureSentence(
-      `From the description, I can see that your team values ${listToPhrase(
-        requestedSkills.slice(0, 4)
-      )}`
-    ),
-    ensureSentence(
-      `As someone with a background in ${educationSummary}, I am eager to contribute in a role where strong fundamentals and steady growth both matter`
-    ),
-    ensureSentence(
-      "It is exactly the type of opportunity where I can bring energy, coachability, and practical execution from day one"
-    ),
-  ];
-
-  const paragraphTwo = buildParagraphTwo({
-    educationSummary,
-    evidence,
-    resumeSkills,
+  // Also grab "required" / "must have" qualifications
+  const qualifications = allLines.filter((l) => {
+    if (l.length < 15 || l.length > 180) return false;
+    if (SKIP.test(l)) return false;
+    return /required|must have|minimum|strong|proficient|experience (in|with)|knowledge of|familiar with|background in|\d\+\s*years/i.test(l);
   });
 
-  const paragraphThree = buildParagraphThree({
-    companyName,
-    requestedSkills,
-    resumeSkills,
-    jobTitle,
-  });
+  return [...new Set([...requirement, ...qualifications])].slice(0, 6);
+}
+
+/**
+ * Extract a short phrase describing what the role focuses on.
+ * Used in paragraph 1 opening.
+ */
+function extractRoleFocus(jobDesc = "") {
+  const reqs = extractRequirements(jobDesc);
+  if (!reqs.length) return "";
+
+  // Take the first clean short requirement and trim it into a phrase
+  const first = reqs[0];
+  return first
+    .replace(/^you will\s+/i, "")
+    .replace(/^you'll\s+/i, "")
+    .replace(/^responsible for\s+/i, "")
+    .replace(/[.!?]+$/, "")
+    .trim()
+    .toLowerCase();
+}
+
+// ─── Resume parsing ──────────────────────────────────────────────────────────
+
+function extractContact(resumeText = "") {
+  const headerLines = lines(resumeText).slice(0, 7);
+  const full = headerLines.join(" ");
+
+  const name =
+    headerLines.find((l) => {
+      if (l.length < 4 || l.length > 44) return false;
+      if (/\d|@|linkedin|github|http/i.test(l)) return false;
+      return /^[A-Za-z .'-]+$/.test(l);
+    }) || "Applicant";
+
+  const email = full.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i)?.[0] || "";
+  const phone = full.match(/(\+?1[-.\s]?)?(\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})/)?.[0] || "";
+  const location = headerLines.find((l) => /,\s*[A-Z]{2}\b/.test(l) || /remote/i.test(l)) || "";
+  const linkedIn = headerLines.find((l) => /linkedin\.com/i.test(l)) || "";
 
   return {
-    headerName: applicantName || contact.name || "Applicant",
-    headerLine:
-      [
-        applicantLocation || contact.location,
-        applicantPhone || contact.phone,
-        applicantEmail || contact.email,
-        applicantLinkedIn || contact.linkedIn,
-      ]
-        .filter(Boolean)
-        .join(" • ") || "",
-    dateLine: new Date().toLocaleDateString(),
-    companyLine: "Hiring Team",
-    companyName,
-    companyLocation: "",
-    greeting: "Dear Hiring Team,",
-    bodyParagraphs: [
-      paragraphOne.join(" "),
-      paragraphTwo.join(" "),
-      paragraphThree.join(" "),
-    ],
-    closing:
-      "Thank you for considering my application. I would welcome the opportunity to discuss how I can contribute to your team.",
-    signature: applicantName || contact.name || "Applicant",
+    name: name.charAt(0).toUpperCase() + name.slice(1),
+    email,
+    phone,
+    location,
+    linkedIn,
+    headerLine: [location, phone, email].filter(Boolean).join(" • "),
   };
 }
 
+function extractEducation(resumeText = "") {
+  const allLines = lines(resumeText);
+  const edu = allLines.find((l) =>
+    /university|college|bachelor|master|degree|b\.s\.|b\.a\.|gpa/i.test(l)
+  );
+  if (!edu) return "a computer science background";
+  return edu
+    .replace(/education/i, "")
+    .replace(/gpa[^,.;]*/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function extractResumeEvidence(resumeText = "") {
+  const allLines = lines(resumeText);
+  const STRONG = /^(built|developed|designed|created|implemented|led|managed|optimized|delivered|analyzed|engineered|launched|improved|automated|resolved|deployed|maintained|increased|reduced|shipped|integrated|refactored|migrated|established|wrote|tested)/i;
+
+  const bullets = allLines
+    .filter((l) => STRONG.test(l))
+    .map((l) => sentence(l))
+    .filter(Boolean);
+
+  const projectish = allLines
+    .filter((l) => /project|platform|database|application|software|api|tool|system|pipeline/i.test(l) && !STRONG.test(l))
+    .map((l) => sentence(l))
+    .filter(Boolean);
+
+  return [...new Set([...bullets, ...projectish])].slice(0, 5);
+}
+
+function extractResumeSkills(resumeText = "") {
+  const SKILL_LIST = [
+    "Python", "Java", "JavaScript", "TypeScript", "React", "Node.js", "Express",
+    "SQL", "PostgreSQL", "MySQL", "MongoDB", "SQLite", "Git", "GitHub", "REST",
+    "APIs", "backend", "frontend", "full-stack", "data structures", "algorithms",
+    "object-oriented programming", "testing", "automation", "AWS", "Docker",
+    "Linux", "Pandas", "NumPy", "ETL", "cloud", "Agile", "HTML", "CSS", "Angular",
+    ".NET", "C++", "C#", "Go", "Rust", "Kotlin", "Swift", "TensorFlow", "PyTorch",
+  ];
+  const lower = resumeText.toLowerCase();
+  return [...new Set(SKILL_LIST.filter((s) => lower.includes(s.toLowerCase())))];
+}
+
+// ─── Paragraph builders ──────────────────────────────────────────────────────
+
+/**
+ * Paragraph 1: Acknowledge the role, the company, and the specific skills/
+ * responsibilities listed in the job description.
+ */
+function buildParagraphOne({ jobTitle, companyName, requirements, education }) {
+  const companyPhrase = companyName ? ` at ${companyName}` : "";
+
+  // Summarize what the role involves using the first 2 requirements
+  let roleFocus = "";
+  if (requirements.length >= 2) {
+    const a = requirements[0]
+      .replace(/^you will\s+/i, "")
+      .replace(/^responsible for\s+/i, "")
+      .replace(/[.!?]+$/, "")
+      .toLowerCase();
+    const b = requirements[1]
+      .replace(/^you will\s+/i, "")
+      .replace(/^responsible for\s+/i, "")
+      .replace(/[.!?]+$/, "")
+      .toLowerCase();
+    roleFocus = `The position involves ${a} and ${b}, which directly aligns with the work I have been building toward.`;
+  } else if (requirements.length === 1) {
+    const a = requirements[0]
+      .replace(/^you will\s+/i, "")
+      .replace(/^responsible for\s+/i, "")
+      .replace(/[.!?]+$/, "")
+      .toLowerCase();
+    roleFocus = `The position involves ${a}, which is exactly the kind of work I have been preparing for.`;
+  } else {
+    roleFocus = "The scope of the role and the type of technical work involved stands out as an excellent fit for my background.";
+  }
+
+  return [
+    sentence(`I am writing to apply for the ${jobTitle}${companyPhrase}`),
+    roleFocus,
+    sentence(`My background in ${education} has prepared me to contribute meaningfully from day one, and I am excited about the opportunity to bring that foundation to ${companyName || "your team"}`),
+  ].join(" ");
+}
+
+/**
+ * Paragraph 2: What the candidate has actually done, pulled from their resume.
+ */
+function buildParagraphTwo({ education, evidence, resumeSkills }) {
+  const skillsPhrase = listPhrase(resumeSkills.slice(0, 5));
+
+  const evidenceLines = [...evidence];
+  while (evidenceLines.length < 2) {
+    evidenceLines.push("I have continued building my technical foundation through coursework, side projects, and hands-on problem solving.");
+  }
+
+  const evidencePart = evidenceLines.slice(0, 3).join(" ");
+
+  return [
+    sentence(`My experience reflects the kind of work this role requires, combining ${education} with real technical projects`),
+    evidencePart,
+    skillsPhrase
+      ? sentence(`Across that work, I have built strong proficiency in ${skillsPhrase}`)
+      : "Across that work, I have consistently written clean, maintainable code and delivered results that teammates and stakeholders can rely on.",
+  ].join(" ");
+}
+
+/**
+ * Paragraph 3: Connect the candidate's skills directly to the job's requirements
+ * and explain why that benefits the company.
+ */
+function buildParagraphThree({ companyName, requirements, resumeSkills, jobTitle }) {
+  // Find skills that overlap with what the job asks for
+  const jobText = requirements.join(" ").toLowerCase();
+  const matched = resumeSkills.filter((s) => jobText.includes(s.toLowerCase()));
+  const bridgeSkills = matched.length >= 2 ? matched : resumeSkills;
+  const skillsBridge = listPhrase(bridgeSkills.slice(0, 5));
+
+  // Pull a specific requirement to call out
+  const specificReq = requirements.find((r) => r.length > 25) || "";
+  const specificLine = specificReq
+    ? sentence(
+        `Specifically, the requirement to ${specificReq
+          .replace(/^you will\s+/i, "")
+          .replace(/^responsible for\s+/i, "")
+          .replace(/[.!?]+$/, "")
+          .toLowerCase()} is something I am well prepared to deliver on`
+      )
+    : "";
+
+  return [
+    sentence(`That background maps directly to what ${companyName || "your team"} is looking for in this ${jobTitle}`),
+    skillsBridge
+      ? sentence(`I would bring ${skillsBridge} alongside the ability to ramp quickly, communicate clearly, and take ownership of work end-to-end`)
+      : "I would bring technical depth, fast learning, and a commitment to producing work that is reliable and ready to build on.",
+    specificLine,
+    sentence(`I am confident I would add real value to ${companyName || "your team"} from the start and keep growing into larger ownership as the role expands`),
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+// ─── Public API ──────────────────────────────────────────────────────────────
+
+/**
+ * Build a full cover letter object from the resume and job description.
+ *
+ * @param {{ resumeText: string, jobDescription: string, targetRole: string }} params
+ * @returns {object} cover letter data
+ */
+export function buildCoverLetter({ resumeText = "", jobDescription = "", targetRole = "" }) {
+  const contact = extractContact(resumeText);
+  const jobTitle = extractJobTitle(jobDescription, targetRole);
+  const companyName = extractCompanyName(jobDescription);
+  const education = extractEducation(resumeText);
+  const requirements = extractRequirements(jobDescription);
+  const evidence = extractResumeEvidence(resumeText);
+  const resumeSkills = extractResumeSkills(resumeText);
+
+  const bodyParagraphs = [
+    buildParagraphOne({ jobTitle, companyName, requirements, education }),
+    buildParagraphTwo({ education, evidence, resumeSkills }),
+    buildParagraphThree({ companyName, requirements, resumeSkills, jobTitle }),
+  ];
+
+  return {
+    headerName: contact.name,
+    headerLine: contact.headerLine,
+    linkedIn: contact.linkedIn,
+    dateLine: new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
+    greeting: "Dear Hiring Team,",
+    bodyParagraphs,
+    closing:
+      "Thank you for taking the time to review my application. I would welcome the opportunity to discuss how my background fits what you are building and how I can contribute to the team.",
+    signature: contact.name,
+  };
+}
+
+/** Render the cover letter as a plain text string */
 export function buildCoverLetterText(letter) {
-  const lines = [];
-  if (letter.headerName) lines.push(letter.headerName);
-  if (letter.headerLine) lines.push(letter.headerLine);
-  if (letter.dateLine) lines.push(letter.dateLine);
-  lines.push("");
-  if (letter.companyLine) lines.push(letter.companyLine);
-  if (letter.companyName) lines.push(letter.companyName);
-  if (letter.companyLocation) lines.push(letter.companyLocation);
-  lines.push("");
-  lines.push(letter.greeting || "Dear Hiring Team,");
-  lines.push("");
-  (letter.bodyParagraphs || []).forEach((paragraph) => {
-    lines.push(paragraph);
-    lines.push("");
+  const out = [];
+  if (letter.headerName) out.push(letter.headerName);
+  if (letter.headerLine) out.push(letter.headerLine);
+  if (letter.linkedIn) out.push(letter.linkedIn);
+  if (letter.dateLine) out.push(letter.dateLine);
+  out.push("");
+  out.push("Hiring Team");
+  out.push("");
+  out.push(letter.greeting || "Dear Hiring Team,");
+  out.push("");
+  (letter.bodyParagraphs || []).forEach((p) => {
+    out.push(p);
+    out.push("");
   });
-  lines.push(letter.closing || "");
-  lines.push("");
-  lines.push("Sincerely,");
-  lines.push(letter.signature || "Applicant");
-  return lines.join("\n").trim();
+  out.push(letter.closing || "");
+  out.push("");
+  out.push("Sincerely,");
+  out.push(letter.signature || "Applicant");
+  return out.join("\n").trim();
 }
 
-export function buildCoverLetterHtml(letter) {
-  return `<!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="UTF-8" />
-    <title>${htmlEscape(letter.signature || "Cover Letter")}</title>
-    <style>
-      * { box-sizing: border-box; }
-      body {
-        margin: 42px;
-        font-family: Arial, Helvetica, sans-serif;
-        color: #111827;
-        background: #ffffff;
-        line-height: 1.55;
-      }
-      .header { margin-bottom: 28px; }
-      .header-name { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
-      .header-line, .date-line { font-size: 15px; }
-      .para { margin: 0 0 18px; font-size: 16px; }
-      .closing { margin-top: 18px; }
-    </style>
-  </head>
-  <body>
-    <div class="header">
-      <div class="header-name">${htmlEscape(
-        letter.headerName || "Applicant"
-      )}</div>
-      ${
-        letter.headerLine
-          ? `<div class="header-line">${htmlEscape(letter.headerLine)}</div>`
-          : ""
-      }
-      ${
-        letter.dateLine
-          ? `<div class="date-line">${htmlEscape(letter.dateLine)}</div>`
-          : ""
-      }
-    </div>
-
-    <div class="para">${htmlEscape(letter.companyLine || "Hiring Team")}</div>
-    ${
-      letter.companyName
-        ? `<div class="para">${htmlEscape(letter.companyName)}</div>`
-        : ""
-    }
-    ${
-      letter.companyLocation
-        ? `<div class="para">${htmlEscape(letter.companyLocation)}</div>`
-        : ""
-    }
-
-    <p class="para">${htmlEscape(letter.greeting || "Dear Hiring Team,")}</p>
-    ${(letter.bodyParagraphs || [])
-      .map((paragraph) => `<p class="para">${htmlEscape(paragraph)}</p>`)
-      .join("")}
-    <p class="para closing">${htmlEscape(letter.closing || "")}</p>
-    <p class="para">Sincerely,<br />${htmlEscape(
-      letter.signature || "Applicant"
-    )}</p>
-  </body>
-</html>`;
-}
-
-function downloadBlob(filename, blob) {
-  const href = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = href;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  document.body.removeChild(anchor);
-  URL.revokeObjectURL(href);
-}
-
-export function downloadCoverLetterText(
-  letter,
-  filename = "targeted_cover_letter.txt"
-) {
+/** Download cover letter as a .txt file */
+export function downloadCoverLetterText(letter, filename = "cover_letter.txt") {
   const content = buildCoverLetterText(letter);
-  downloadBlob(
-    filename,
-    new Blob([content], { type: "text/plain;charset=utf-8" })
-  );
+  const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
-export function downloadCoverLetterHtml(
-  letter,
-  filename = "targeted_cover_letter.html"
-) {
-  const content = buildCoverLetterHtml(letter);
-  downloadBlob(
-    filename,
-    new Blob([content], { type: "text/html;charset=utf-8" })
-  );
-}
-
+/** Open a print dialog so the user can save as PDF */
 export function printCoverLetterPdf(letter) {
-  const content = buildCoverLetterHtml(letter);
-  const win = window.open("", "_blank", "width=900,height=1000");
+  const text = buildCoverLetterText(letter);
+  const escaped = text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Cover Letter</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 48px 56px;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 12pt;
+      color: #111;
+      line-height: 1.6;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>${escaped}</body>
+</html>`;
+
+  const win = window.open("", "_blank", "width=860,height=1000");
   if (!win) return;
   win.document.open();
-  win.document.write(content);
+  win.document.write(html);
   win.document.close();
   win.focus();
-  setTimeout(() => win.print(), 250);
+  setTimeout(() => win.print(), 300);
 }

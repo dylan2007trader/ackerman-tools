@@ -1,144 +1,158 @@
 // Client-side premium resume upgrader
-// Strategy: parse original resume, make targeted improvements, flag missing items for manual addition
+// Strategy: line-by-line improvements that fully preserve the original structure,
+// formatting, dates, company names, and layout. We only touch bullet language and
+// ATS vocabulary — nothing else moves.
 
-const WEAK_VERB_PATTERNS = [
-  { pattern: /^helped\s+/i, replacement: "Supported" },
-  { pattern: /^assisted\s+/i, replacement: "Supported" },
-  { pattern: /^worked on\s+/i, replacement: "Developed" },
-  { pattern: /^was responsible for\s+/i, replacement: "Managed" },
-  { pattern: /^participated in\s+/i, replacement: "Contributed to" },
-  { pattern: /^involved in\s+/i, replacement: "Contributed to" },
-  { pattern: /^part of\s+/i, replacement: "Contributed to" },
-  { pattern: /^did\s+/i, replacement: "Completed" },
-  { pattern: /^made\s+/i, replacement: "Built" },
-  { pattern: /^tried to\s+/i, replacement: "Worked to" },
+const WEAK_VERB_REPLACEMENTS = [
+  { pattern: /^helped\s+/i, replacement: "Supported " },
+  { pattern: /^assisted\s+(with\s+)?/i, replacement: "Supported " },
+  { pattern: /^worked on\s+/i, replacement: "Developed " },
+  { pattern: /^was responsible for\s+/i, replacement: "Managed " },
+  { pattern: /^participated in\s+/i, replacement: "Contributed to " },
+  { pattern: /^involved in\s+/i, replacement: "Contributed to " },
+  { pattern: /^part of\s+/i, replacement: "Contributed to " },
+  { pattern: /^did\s+/i, replacement: "Completed " },
+  { pattern: /^made\s+/i, replacement: "Built " },
+  { pattern: /^tried to\s+/i, replacement: "Worked to " },
+  { pattern: /^tasked with\s+/i, replacement: "Delivered " },
+  { pattern: /^in charge of\s+/i, replacement: "Managed " },
 ];
 
-const STRONG_STARTERS = [
+const STRONG_VERB_STARTS = [
   "built", "developed", "designed", "created", "implemented", "led", "managed",
   "optimized", "delivered", "analyzed", "engineered", "launched", "improved",
   "automated", "resolved", "architected", "deployed", "maintained", "reduced",
   "increased", "streamlined", "integrated", "migrated", "refactored", "shipped",
   "established", "coordinated", "collaborated", "mentored", "contributed",
+  "wrote", "tested", "debugged", "configured", "monitored", "scaled",
 ];
 
-const ATS_UPGRADES = [
-  { weak: /\bcode review/gi, strong: "code review process" },
-  { weak: /\bteam player/gi, strong: "cross-functional collaboration" },
-  { weak: /\bfast learner/gi, strong: "rapid technical onboarding" },
-  { weak: /\bhard worker/gi, strong: "high-output contributor" },
-  { weak: /\bpassionate about/gi, strong: "focused on" },
-  { weak: /\bresponsible for/gi, strong: "owned" },
-  { weak: /\bknowledge of/gi, strong: "proficiency in" },
-  { weak: /\bexperience with/gi, strong: "hands-on experience with" },
-  { weak: /\bfamiliar with/gi, strong: "proficient in" },
+const ATS_SWAPS = [
+  { from: /\bresponsible for\b/gi, to: "owned" },
+  { from: /\bknowledge of\b/gi, to: "proficiency in" },
+  { from: /\bfamiliar with\b/gi, to: "proficient in" },
+  { from: /\bexperience with\b/gi, to: "hands-on experience with" },
+  { from: /\bpassionate about\b/gi, to: "focused on" },
+  { from: /\bteam player\b/gi, to: "collaborative contributor" },
+  { from: /\bfast learner\b/gi, to: "quick to ramp on new technologies" },
+  { from: /\bhard worker\b/gi, to: "high-output contributor" },
 ];
 
-function normalizeWhitespace(text = "") {
-  return String(text || "")
-    .replace(/\r/g, "")
-    .replace(/[ \t]+/g, " ")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+function isBulletLine(trimmed) {
+  const noBullet = trimmed.replace(/^[-*•\u2022]\s*/, "").trim();
+  const lower = noBullet.toLowerCase();
+  if (STRONG_VERB_STARTS.some((v) => lower.startsWith(v + " ") || lower.startsWith(v + "."))) return true;
+  if (WEAK_VERB_REPLACEMENTS.some(({ pattern }) => pattern.test(noBullet))) return true;
+  return false;
 }
 
-function cleanLine(line = "") {
-  return normalizeWhitespace(
-    String(line || "").replace(/^[-*•\u2022\s]+/, "").trim()
-  );
+function hasBulletChar(trimmed) {
+  return /^[-*•\u2022]\s/.test(trimmed);
 }
 
-function ensureSentence(text = "") {
-  const clean = normalizeWhitespace(text);
-  if (!clean) return "";
-  const first = clean.charAt(0).toUpperCase() + clean.slice(1);
-  return /[.!?]$/.test(first) ? first : `${first}.`;
-}
-
-function extractLines(text = "") {
-  return String(text || "")
-    .split("\n")
-    .map((l) => cleanLine(l))
-    .filter(Boolean);
-}
-
-function isBulletLine(line = "") {
-  const lower = line.toLowerCase();
-  return STRONG_STARTERS.some((v) => lower.startsWith(v)) ||
-    WEAK_VERB_PATTERNS.some(({ pattern }) => pattern.test(line));
-}
-
-function upgradeBullet(line = "") {
-  let upgraded = line;
+function upgradeBulletText(text) {
+  let upgraded = text;
 
   // Replace weak openers
-  for (const { pattern, replacement } of WEAK_VERB_PATTERNS) {
+  for (const { pattern, replacement } of WEAK_VERB_REPLACEMENTS) {
     if (pattern.test(upgraded)) {
-      upgraded = upgraded.replace(pattern, `${replacement} `).trim();
+      upgraded = upgraded.replace(pattern, replacement).trim();
       break;
     }
   }
 
-  // Apply ATS vocabulary upgrades
-  for (const { weak, strong } of ATS_UPGRADES) {
-    upgraded = upgraded.replace(weak, strong);
+  // Apply ATS vocabulary swaps
+  for (const { from, to } of ATS_SWAPS) {
+    upgraded = upgraded.replace(from, to);
   }
 
-  return ensureSentence(upgraded);
+  // Ensure ends with period
+  upgraded = upgraded.trim();
+  if (upgraded && !/[.!?]$/.test(upgraded)) {
+    upgraded += ".";
+  }
+
+  // Capitalize first letter
+  if (upgraded.length > 0) {
+    upgraded = upgraded.charAt(0).toUpperCase() + upgraded.slice(1);
+  }
+
+  return upgraded;
 }
 
-function detectMissingItems(resumeText = "", analysis = {}) {
+function applyAtsSwapsOnly(text) {
+  let result = text;
+  for (const { from, to } of ATS_SWAPS) {
+    result = result.replace(from, to);
+  }
+  return result;
+}
+
+function detectMissingItems(resumeText) {
   const missing = [];
   const lower = resumeText.toLowerCase();
 
-  // Phone number
   const hasPhone = /(\+?1[-.\s]?)?(\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})/.test(resumeText);
   if (!hasPhone) {
-    missing.push({ field: "Phone number", reason: "Recruiters and ATS systems expect a phone number in the contact header." });
+    missing.push({
+      field: "Phone number",
+      reason: "Add a phone number to your contact header. Recruiters and ATS systems expect it.",
+    });
   }
 
-  // Email
   const hasEmail = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i.test(resumeText);
   if (!hasEmail) {
-    missing.push({ field: "Email address", reason: "An email address is required for contact." });
+    missing.push({
+      field: "Email address",
+      reason: "An email address is required for contact.",
+    });
   }
 
-  // LinkedIn
   if (!lower.includes("linkedin")) {
-    missing.push({ field: "LinkedIn URL", reason: "Most technical job applications expect a LinkedIn profile link." });
+    missing.push({
+      field: "LinkedIn URL",
+      reason: "Most technical applications expect a LinkedIn link in the header.",
+    });
   }
 
-  // GitHub
   if (!lower.includes("github")) {
-    missing.push({ field: "GitHub URL", reason: "For technical roles, GitHub shows real code and initiative beyond the resume." });
+    missing.push({
+      field: "GitHub URL",
+      reason: "GitHub shows real code and initiative — add it to your header.",
+    });
   }
 
-  // Professional summary
-  const hasSummary = /summary|objective|profile|about me/i.test(resumeText);
+  const hasSummary = /\b(summary|objective|profile|about me)\b/i.test(resumeText);
   if (!hasSummary) {
-    missing.push({ field: "Professional summary", reason: "A 2–3 sentence summary at the top lets recruiters immediately understand your fit." });
+    missing.push({
+      field: "Professional summary",
+      reason: "A 2–3 sentence summary at the top lets recruiters immediately understand your fit.",
+    });
   }
 
-  // Projects section
-  const hasProjects = /project/i.test(resumeText);
+  const hasProjects = /\bprojects?\b/i.test(resumeText);
   if (!hasProjects) {
-    missing.push({ field: "Projects section", reason: "For technical roles, personal or academic projects show initiative and hands-on skills." });
+    missing.push({
+      field: "Projects section",
+      reason: "Personal or academic projects show initiative and hands-on skills for technical roles.",
+    });
   }
 
-  // Quantified bullet (at least 2)
-  const metricMatches = (resumeText.match(/\b\d+(?:\.\d+)?%|\$\d+|\b\d{2,}\b/g) || []).length;
-  if (metricMatches < 2) {
-    missing.push({ field: "Quantified achievements", reason: 'Add numbers to at least 2–3 bullets (e.g., "reduced load time by 40%", "served 500+ users").' });
+  const metricCount = (resumeText.match(/\b\d+(?:\.\d+)?%|\$[\d,]+|\b[1-9]\d{1,}\b/g) || []).length;
+  if (metricCount < 2) {
+    missing.push({
+      field: "Quantified achievements",
+      reason: 'Add numbers to at least 2 bullets. Example: "reduced load time by 40%" or "served 500+ users".',
+    });
   }
 
   return missing;
 }
 
-function buildSummary(resumeText = "", targetRole = "") {
+function buildSummary(resumeText, targetRole) {
   const lower = resumeText.toLowerCase();
-  const lines = extractLines(resumeText);
+  const lines = resumeText.split("\n").map((l) => l.trim()).filter(Boolean);
 
-  // Extract education line
   const eduLine = lines.find((l) =>
     /university|college|bachelor|master|degree|b\.s\.|b\.a\./i.test(l)
   ) || "";
@@ -152,163 +166,95 @@ function buildSummary(resumeText = "", targetRole = "") {
         .toLowerCase()
     : "a computer science background";
 
-  // Detect top skills mentioned
   const SKILL_SIGNALS = [
     "Python", "JavaScript", "TypeScript", "Java", "C++", "React", "Node.js",
     "SQL", "PostgreSQL", "MongoDB", "AWS", "Docker", "Git", "REST", "APIs",
   ];
-  const detectedSkills = SKILL_SIGNALS.filter((s) =>
-    lower.includes(s.toLowerCase())
-  ).slice(0, 4);
-
-  const skillPhrase = detectedSkills.length
-    ? detectedSkills.join(", ")
-    : "software development fundamentals";
+  const found = SKILL_SIGNALS.filter((s) => lower.includes(s.toLowerCase())).slice(0, 4);
+  const skillPhrase = found.length ? found.join(", ") : "software development fundamentals";
 
   const roleLabel = targetRole
-    ? `${targetRole.charAt(0).toUpperCase()}${targetRole.slice(1)}`
+    ? targetRole.charAt(0).toUpperCase() + targetRole.slice(1)
     : "Software Engineer";
 
-  return [
-    `${roleLabel} with ${eduPhrase}, bringing hands-on experience in ${skillPhrase}.`,
-    `Focused on writing clean, maintainable code and delivering reliable technical work.`,
-    `Looking to contribute technical depth, fast learning, and consistent execution in a team environment.`,
-  ].join(" ");
-}
-
-function parseResumeSections(resumeText = "") {
-  const lines = resumeText.split("\n");
-  const sections = [];
-  let currentSection = { heading: null, lines: [] };
-
-  const SECTION_HEADINGS = /^(education|experience|projects?|skills?|summary|objective|profile|work experience|technical skills?|leadership|activities|awards?|certifications?)/i;
-
-  for (const rawLine of lines) {
-    const trimmed = rawLine.trim();
-    if (!trimmed) {
-      currentSection.lines.push("");
-      continue;
-    }
-
-    const isHeading =
-      SECTION_HEADINGS.test(trimmed) &&
-      trimmed.length < 40 &&
-      !/[a-z]{3,}\s+[a-z]{3,}\s+[a-z]{3,}/i.test(trimmed); // not a sentence
-
-    if (isHeading) {
-      if (currentSection.heading !== null || currentSection.lines.some((l) => l.trim())) {
-        sections.push({ ...currentSection });
-      }
-      currentSection = { heading: trimmed, lines: [] };
-    } else {
-      currentSection.lines.push(rawLine);
-    }
-  }
-
-  if (currentSection.heading !== null || currentSection.lines.some((l) => l.trim())) {
-    sections.push({ ...currentSection });
-  }
-
-  return sections;
-}
-
-function upgradeSection(section) {
-  const upgradedLines = section.lines.map((rawLine) => {
-    const trimmed = rawLine.trim();
-    const cleaned = cleanLine(trimmed);
-
-    if (!cleaned) return rawLine;
-
-    if (isBulletLine(cleaned)) {
-      const upgraded = upgradeBullet(cleaned);
-      // Preserve original leading whitespace/bullet character
-      const leadingBullet = rawLine.match(/^[\s]*[-*•\u2022]?\s*/)?.[0] || "";
-      return `${leadingBullet}${upgraded}`;
-    }
-
-    // Apply ATS vocabulary upgrades to non-bullet lines too
-    let upgraded = trimmed;
-    for (const { weak, strong } of ATS_UPGRADES) {
-      upgraded = upgraded.replace(weak, strong);
-    }
-    return rawLine === trimmed ? upgraded : rawLine.replace(trimmed, upgraded);
-  });
-
-  return { ...section, lines: upgradedLines };
-}
-
-function sectionsToText(sections) {
-  return sections
-    .map((section) => {
-      const lines = [];
-      if (section.heading) lines.push(section.heading);
-      lines.push(...section.lines);
-      return lines.join("\n");
-    })
-    .join("\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  return (
+    `${roleLabel} with ${eduPhrase}, bringing hands-on experience in ${skillPhrase}. ` +
+    `Focused on writing clean, maintainable code and delivering reliable technical work. ` +
+    `Looking to contribute technical depth, fast learning, and consistent execution in a team environment.`
+  );
 }
 
 /**
  * Build the premium upgraded resume.
- * Keeps the original structure, improves bullet language and ATS vocabulary,
- * adds a summary if missing, and returns a list of items to add manually.
  *
- * @param {string} resumeText - original resume text
- * @param {string} targetRole - e.g. "software engineer"
- * @param {object} analysis - from resumeAnalyzer.analyzeResume()
- * @returns {{ upgradedResume: string, missingItems: Array<{field: string, reason: string}> }}
+ * Goes line-by-line through the original resume. Only changes:
+ * - Bullet lines: upgrades weak verbs and ATS vocabulary
+ * - Non-bullet lines: applies ATS vocabulary swaps only
+ * - Injects a SUMMARY section after the contact header if missing
+ *
+ * Everything else — section order, dates, company names, indentation,
+ * blank lines, formatting — is left exactly as-is.
+ *
+ * @param {string} resumeText  Original resume text
+ * @param {string} targetRole  e.g. "software engineer"
+ * @param {object} analysis    From resumeAnalyzer (unused but kept for API compat)
+ * @returns {{ upgradedResume: string, missingItems: Array }}
  */
 export function buildPremiumResume(resumeText = "", targetRole = "", analysis = {}) {
-  const sections = parseResumeSections(resumeText);
+  const originalLines = resumeText.split("\n");
+  const upgradedLines = [];
 
-  // Upgrade each section's bullet lines
-  const upgradedSections = sections.map(upgradeSection);
+  for (const rawLine of originalLines) {
+    const trimmed = rawLine.trim();
 
-  // Check if a summary section exists
-  const hasSummary = upgradedSections.some((s) =>
-    s.heading && /summary|objective|profile/i.test(s.heading)
-  );
+    if (!trimmed) {
+      upgradedLines.push(rawLine);
+      continue;
+    }
 
-  // Build upgraded text
-  let upgradedText = sectionsToText(upgradedSections);
-
-  // If no summary, inject one after the contact header (first section with no heading)
-  if (!hasSummary) {
-    const summary = buildSummary(resumeText, targetRole);
-    const contactSection = upgradedSections.find((s) => !s.heading);
-    if (contactSection) {
-      const contactText = [contactSection.heading, ...contactSection.lines]
-        .filter((l) => l !== null)
-        .join("\n")
-        .trim();
-      const rest = upgradedSections
-        .slice(1)
-        .map((s) => {
-          const lines = [];
-          if (s.heading) lines.push(s.heading);
-          lines.push(...s.lines);
-          return lines.join("\n");
-        })
-        .join("\n");
-
-      upgradedText = `${contactText}\n\nSUMMARY\n${summary}\n\n${rest}`
-        .replace(/\n{3,}/g, "\n\n")
-        .trim();
+    if (isBulletLine(trimmed)) {
+      // Preserve the leading whitespace and bullet character, upgrade only the text
+      const leadingMatch = rawLine.match(/^(\s*[-*•\u2022]?\s*)/);
+      const leading = leadingMatch ? leadingMatch[1] : "";
+      const bulletText = trimmed.replace(/^[-*•\u2022]\s*/, "");
+      const upgraded = upgradeBulletText(bulletText);
+      upgradedLines.push(leading + upgraded);
     } else {
-      upgradedText = `SUMMARY\n${summary}\n\n${upgradedText}`;
+      // Non-bullet line: apply ATS swaps only, preserve everything else
+      upgradedLines.push(applyAtsSwapsOnly(rawLine));
     }
   }
 
-  const missingItems = detectMissingItems(resumeText, analysis);
+  let upgradedText = upgradedLines.join("\n");
+
+  // Inject a summary section after the first blank line (end of contact header)
+  // if the resume doesn't already have one
+  const hasSummary = /\b(summary|objective|profile|about me)\b/i.test(resumeText);
+  if (!hasSummary) {
+    const summary = buildSummary(resumeText, targetRole);
+    const textLines = upgradedText.split("\n");
+    // Find the first blank line (end of contact block)
+    let insertAt = -1;
+    for (let i = 0; i < textLines.length; i++) {
+      if (!textLines[i].trim()) {
+        insertAt = i + 1;
+        break;
+      }
+    }
+    if (insertAt === -1) insertAt = textLines.length;
+    textLines.splice(insertAt, 0, "", "SUMMARY", summary, "");
+    upgradedText = textLines.join("\n");
+  }
+
+  // Clean up excessive blank lines
+  upgradedText = upgradedText.replace(/\n{3,}/g, "\n\n").trim();
+
+  const missingItems = detectMissingItems(resumeText);
 
   return { upgradedResume: upgradedText, missingItems };
 }
 
-/**
- * Download a string as a plain text file.
- */
+/** Download as plain text file */
 export function downloadResumeText(text = "", filename = "upgraded_resume.txt") {
   const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -321,63 +267,53 @@ export function downloadResumeText(text = "", filename = "upgraded_resume.txt") 
   URL.revokeObjectURL(url);
 }
 
-/**
- * Download the upgraded resume as a DOCX file using the docx package.
- */
+/** Download as DOCX using the docx package */
 export async function downloadResumeDocx(text = "", filename = "upgraded_resume.docx") {
-  const { Document, Packer, Paragraph, TextRun, HeadingLevel } = await import("docx");
+  const { Document, Packer, Paragraph, TextRun } = await import("docx");
+
+  const HEADING_RE = /^(SUMMARY|EDUCATION|EXPERIENCE|PROJECTS?|SKILLS?|WORK EXPERIENCE|TECHNICAL SKILLS?|LEADERSHIP|ACTIVITIES|CERTIFICATIONS?|PROFESSIONAL SUMMARY)/i;
 
   const lines = text.split("\n");
   const children = [];
 
-  const SECTION_HEADINGS_RE = /^(SUMMARY|EDUCATION|EXPERIENCE|PROJECTS?|SKILLS?|WORK EXPERIENCE|TECHNICAL SKILLS?|LEADERSHIP|ACTIVITIES|CERTIFICATIONS?)/i;
-
   for (const line of lines) {
     const trimmed = line.trim();
+
     if (!trimmed) {
       children.push(new Paragraph({ children: [new TextRun("")] }));
       continue;
     }
 
-    const isBullet = /^[•\-*]/.test(trimmed) || /^[A-Z][a-z]+(ed|d|led|ned|red|ted)\s/.test(trimmed);
-    const isHeading = SECTION_HEADINGS_RE.test(trimmed) && trimmed.length < 40;
+    const isHeading = HEADING_RE.test(trimmed) && trimmed.length < 45;
+    const isBullet = /^[-*•\u2022]/.test(trimmed);
 
     if (isHeading) {
       children.push(
         new Paragraph({
           children: [new TextRun({ text: trimmed, bold: true, size: 26 })],
-          spacing: { before: 200, after: 80 },
+          spacing: { before: 180, after: 60 },
           border: { bottom: { style: "single", size: 6, color: "4353DF" } },
         })
       );
     } else if (isBullet) {
-      const bulletText = trimmed.replace(/^[•\-*]\s*/, "");
       children.push(
         new Paragraph({
           bullet: { level: 0 },
-          children: [new TextRun({ text: bulletText, size: 22 })],
-          spacing: { after: 60 },
+          children: [new TextRun({ text: trimmed.replace(/^[-*•\u2022]\s*/, ""), size: 22 })],
+          spacing: { after: 50 },
         })
       );
     } else {
       children.push(
         new Paragraph({
           children: [new TextRun({ text: trimmed, size: 22 })],
-          spacing: { after: 60 },
+          spacing: { after: 50 },
         })
       );
     }
   }
 
-  const doc = new Document({
-    sections: [
-      {
-        properties: {},
-        children,
-      },
-    ],
-  });
-
+  const doc = new Document({ sections: [{ properties: {}, children }] });
   const blob = await Packer.toBlob(doc);
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
