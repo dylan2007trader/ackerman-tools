@@ -183,96 +183,126 @@ function extractResumeSkills(resumeText = "") {
 // ─── Paragraph builders ──────────────────────────────────────────────────────
 
 /**
- * Paragraph 1: Acknowledge the role, the company, and the specific skills/
- * responsibilities listed in the job description.
+ * Paragraph 1: What the job description is requiring.
+ * Restates the role's responsibilities, required skills, and qualifications
+ * so the hiring team sees the applicant clearly understood the posting.
  */
-function buildParagraphOne({ jobTitle, companyName, requirements, education }) {
+function buildParagraphOne({ jobTitle, companyName, requirements }) {
   const companyPhrase = companyName ? ` at ${companyName}` : "";
 
-  // Summarize what the role involves using the first 2 requirements
-  let roleFocus = "";
-  if (requirements.length >= 2) {
-    const a = requirements[0]
-      .replace(/^you will\s+/i, "")
-      .replace(/^responsible for\s+/i, "")
-      .replace(/[.!?]+$/, "")
-      .toLowerCase();
-    const b = requirements[1]
-      .replace(/^you will\s+/i, "")
-      .replace(/^responsible for\s+/i, "")
-      .replace(/[.!?]+$/, "")
-      .toLowerCase();
-    roleFocus = `The position involves ${a} and ${b}, which directly aligns with the work I have been building toward.`;
-  } else if (requirements.length === 1) {
-    const a = requirements[0]
-      .replace(/^you will\s+/i, "")
-      .replace(/^responsible for\s+/i, "")
-      .replace(/[.!?]+$/, "")
-      .toLowerCase();
-    roleFocus = `The position involves ${a}, which is exactly the kind of work I have been preparing for.`;
+  const cleanReqs = requirements
+    .map((r) =>
+      r
+        .replace(/^you will\s+/i, "")
+        .replace(/^you'll\s+/i, "")
+        .replace(/^responsible for\s+/i, "")
+        .replace(/^required\s*[:\-]?\s*/i, "")
+        .replace(/^must have\s+/i, "")
+        .replace(/[.!?]+$/, "")
+        .trim()
+        .toLowerCase()
+    )
+    .filter((r) => r.length > 10);
+
+  let requirementsSummary = "";
+  if (cleanReqs.length >= 3) {
+    requirementsSummary =
+      `The posting makes clear that ${companyName || "the team"} is looking for someone who can ${cleanReqs[0]}, ` +
+      `${cleanReqs[1]}, and ${cleanReqs[2]}. ` +
+      (cleanReqs[3]
+        ? `Beyond those core responsibilities, the role also calls for the ability to ${cleanReqs[3]}. `
+        : "") +
+      `These are areas I have specifically focused on developing throughout my academic and project work, ` +
+      `and they represent the kind of environment where I consistently perform well.`;
+  } else if (cleanReqs.length === 2) {
+    requirementsSummary =
+      `The posting highlights a need to ${cleanReqs[0]} and ${cleanReqs[1]}. ` +
+      `These responsibilities align directly with the work I have done and the skills I have built, ` +
+      `making this role a strong match for where I am right now.`;
+  } else if (cleanReqs.length === 1) {
+    requirementsSummary =
+      `The position centers on the ability to ${cleanReqs[0]}, which is something I have been actively developing ` +
+      `and have demonstrated in real projects.`;
   } else {
-    roleFocus = "The scope of the role and the type of technical work involved stands out as an excellent fit for my background.";
+    requirementsSummary =
+      `The role${companyPhrase} requires a technically strong candidate who can contribute quickly, ` +
+      `work well within a team, and take ownership of meaningful technical work. ` +
+      `Those are exactly the qualities I have been building toward throughout my education and project experience.`;
   }
 
   return [
-    sentence(`I am writing to apply for the ${jobTitle}${companyPhrase}`),
-    roleFocus,
-    sentence(`My background in ${education} has prepared me to contribute meaningfully from day one, and I am excited about the opportunity to bring that foundation to ${companyName || "your team"}`),
+    sentence(`I am excited to apply for the ${jobTitle}${companyPhrase}`),
+    requirementsSummary,
   ].join(" ");
 }
 
 /**
- * Paragraph 2: What the candidate has actually done, pulled from their resume.
+ * Paragraph 2: What the person provides — their skills, experience, and
+ * accomplishments drawn directly from their resume.
  */
 function buildParagraphTwo({ education, evidence, resumeSkills }) {
-  const skillsPhrase = listPhrase(resumeSkills.slice(0, 5));
+  const skillsPhrase = listPhrase(resumeSkills.slice(0, 6));
 
   const evidenceLines = [...evidence];
-  while (evidenceLines.length < 2) {
-    evidenceLines.push("I have continued building my technical foundation through coursework, side projects, and hands-on problem solving.");
+  while (evidenceLines.length < 3) {
+    evidenceLines.push(
+      "I have continued strengthening my technical foundation through coursework, independent projects, and applied problem solving."
+    );
   }
 
-  const evidencePart = evidenceLines.slice(0, 3).join(" ");
+  const evidencePart = evidenceLines.slice(0, 4).join(" ");
 
   return [
-    sentence(`My experience reflects the kind of work this role requires, combining ${education} with real technical projects`),
+    sentence(
+      `My background in ${education} has given me a strong technical foundation that I have consistently applied to real projects`
+    ),
     evidencePart,
     skillsPhrase
-      ? sentence(`Across that work, I have built strong proficiency in ${skillsPhrase}`)
-      : "Across that work, I have consistently written clean, maintainable code and delivered results that teammates and stakeholders can rely on.",
+      ? sentence(
+          `My core technical skills include ${skillsPhrase}, and I have used these tools to ship projects that are clean, well-structured, and built to last`
+        )
+      : "I have focused on writing clean, maintainable code and delivering technical work that teammates and stakeholders can rely on.",
+    "I approach every project with attention to detail, a willingness to dig into problems until they are fully understood, and a commitment to producing work that holds up under real conditions.",
   ].join(" ");
 }
 
 /**
- * Paragraph 3: Connect the candidate's skills directly to the job's requirements
- * and explain why that benefits the company.
+ * Paragraph 3: Why those skills apply to this job and why they would be a good fit.
+ * Explicitly connects the resume's skills to the job's requirements.
  */
 function buildParagraphThree({ companyName, requirements, resumeSkills, jobTitle }) {
-  // Find skills that overlap with what the job asks for
   const jobText = requirements.join(" ").toLowerCase();
   const matched = resumeSkills.filter((s) => jobText.includes(s.toLowerCase()));
   const bridgeSkills = matched.length >= 2 ? matched : resumeSkills;
   const skillsBridge = listPhrase(bridgeSkills.slice(0, 5));
 
-  // Pull a specific requirement to call out
-  const specificReq = requirements.find((r) => r.length > 25) || "";
-  const specificLine = specificReq
+  const specificReq = requirements.find((r) => r.length > 30) || "";
+  const bridgeLine = specificReq
     ? sentence(
-        `Specifically, the requirement to ${specificReq
+        `For example, the requirement to ${specificReq
           .replace(/^you will\s+/i, "")
           .replace(/^responsible for\s+/i, "")
           .replace(/[.!?]+$/, "")
-          .toLowerCase()} is something I am well prepared to deliver on`
+          .toLowerCase()} maps directly to work I have already done and can deliver on immediately`
       )
     : "";
 
   return [
-    sentence(`That background maps directly to what ${companyName || "your team"} is looking for in this ${jobTitle}`),
+    sentence(
+      `The combination of what ${companyName || "your team"} is looking for and what I bring makes this a strong fit from both sides`
+    ),
     skillsBridge
-      ? sentence(`I would bring ${skillsBridge} alongside the ability to ramp quickly, communicate clearly, and take ownership of work end-to-end`)
-      : "I would bring technical depth, fast learning, and a commitment to producing work that is reliable and ready to build on.",
-    specificLine,
-    sentence(`I am confident I would add real value to ${companyName || "your team"} from the start and keep growing into larger ownership as the role expands`),
+      ? sentence(
+          `My proficiency in ${skillsBridge} means I can step into the technical expectations of the ${jobTitle} without a long ramp-up period`
+        )
+      : sentence(
+          `My technical background means I can step into the expectations of this role without a long ramp-up period`
+        ),
+    bridgeLine,
+    "Beyond the technical side, I bring clear communication, strong follow-through, and a collaborative mindset that makes it easier for the team to move work forward.",
+    sentence(
+      `I am genuinely excited about what ${companyName || "your organization"} is building, and I am confident that I would contribute real value while continuing to grow as an engineer`
+    ),
   ]
     .filter(Boolean)
     .join(" ");
