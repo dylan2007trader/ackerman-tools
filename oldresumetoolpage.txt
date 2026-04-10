@@ -1,0 +1,805 @@
+import React, { useState } from "react";
+import mammoth from "mammoth";
+import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf";
+
+import ScoreCard from "../components/resume/ScoreCard";
+import StatsGrid from "../components/resume/StatsGrid";
+import ImprovementSections from "../components/resume/ImprovementSections";
+import PremiumUpsell from "../components/resume/PremiumUpsell";
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+
+const ROLE_KEYWORDS = {
+  "software engineer": [
+    "javascript",
+    "typescript",
+    "python",
+    "java",
+    "react",
+    "node",
+    "api",
+    "git",
+    "sql",
+    "debug",
+    "testing",
+    "agile",
+    "backend",
+    "frontend",
+    "full stack",
+    "data structures",
+    "algorithms",
+    "deployment",
+    "aws",
+    "docker",
+  ],
+  "data scientist": [
+    "python",
+    "sql",
+    "pandas",
+    "numpy",
+    "machine learning",
+    "data analysis",
+    "statistics",
+    "visualization",
+    "tableau",
+    "power bi",
+    "regression",
+    "classification",
+    "modeling",
+    "a/b testing",
+    "etl",
+    "data cleaning",
+    "scikit-learn",
+    "tensorflow",
+    "pytorch",
+    "jupyter",
+  ],
+  "backend developer": [
+    "python",
+    "java",
+    "node",
+    "api",
+    "rest",
+    "graphql",
+    "sql",
+    "postgres",
+    "mongodb",
+    "redis",
+    "docker",
+    "aws",
+    "microservices",
+    "backend",
+    "authentication",
+    "authorization",
+    "server",
+    "deployment",
+    "testing",
+    "scalability",
+  ],
+  "frontend developer": [
+    "javascript",
+    "typescript",
+    "react",
+    "html",
+    "css",
+    "frontend",
+    "responsive",
+    "ui",
+    "ux",
+    "figma",
+    "redux",
+    "next.js",
+    "accessibility",
+    "web performance",
+    "testing",
+    "component",
+    "design system",
+    "api",
+    "git",
+    "animation",
+  ],
+  "full stack developer": [
+    "javascript",
+    "typescript",
+    "react",
+    "node",
+    "api",
+    "sql",
+    "mongodb",
+    "postgres",
+    "frontend",
+    "backend",
+    "full stack",
+    "authentication",
+    "deployment",
+    "aws",
+    "docker",
+    "testing",
+    "git",
+    "responsive",
+    "database",
+    "server",
+  ],
+};
+
+const ACTION_VERBS = [
+  "built",
+  "created",
+  "developed",
+  "designed",
+  "led",
+  "improved",
+  "implemented",
+  "launched",
+  "optimized",
+  "analyzed",
+  "automated",
+  "managed",
+  "delivered",
+  "engineered",
+  "generated",
+  "increased",
+  "reduced",
+  "solved",
+  "streamlined",
+  "deployed",
+  "integrated",
+  "tested",
+  "refactored",
+  "maintained",
+  "supported",
+  "collaborated",
+  "executed",
+  "produced",
+  "drove",
+  "owned",
+];
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function percentFromCounts(found, total) {
+  if (!total) return 0;
+  return Math.round((found / total) * 100);
+}
+
+function getRoleKeywords(role) {
+  return ROLE_KEYWORDS[role] || ROLE_KEYWORDS["software engineer"];
+}
+
+function detectSections(text) {
+  const sections = {
+    education: /(^|\n)\s*education\s*(\n|$)/i.test(text),
+    experience:
+      /(^|\n)\s*(experience|work experience|professional experience)\s*(\n|$)/i.test(
+        text
+      ),
+    skills: /(^|\n)\s*(skills|technical skills)\s*(\n|$)/i.test(text),
+    projects: /(^|\n)\s*projects\s*(\n|$)/i.test(text),
+  };
+
+  const missingSections = [];
+  if (!sections.education) missingSections.push("Education");
+  if (!sections.experience) missingSections.push("Experience");
+  if (!sections.skills) missingSections.push("Skills");
+  if (!sections.projects) missingSections.push("Projects");
+
+  return {
+    sectionsFound: sections,
+    missingSections,
+    hasProjects: sections.projects,
+  };
+}
+
+function extractBulletLines(text) {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const bullets = lines.filter((line) => {
+    return (
+      line.startsWith("•") ||
+      line.startsWith("-") ||
+      line.startsWith("*") ||
+      /^\d+\./.test(line)
+    );
+  });
+
+  if (bullets.length > 0) {
+    return bullets;
+  }
+
+  return lines.filter((line) => line.length > 45 && line.length < 220).slice(0, 20);
+}
+
+function analyzeResumeText(text, role, targetType) {
+  const cleanedText = String(text || "").replace(/\u00a0/g, " ").trim();
+  const lower = cleanedText.toLowerCase();
+
+  const { sectionsFound, missingSections, hasProjects } = detectSections(cleanedText);
+  const roleKeywords = getRoleKeywords(role);
+
+  const matchedKeywords = roleKeywords.filter((keyword) => lower.includes(keyword));
+  const missingKeywords = roleKeywords.filter((keyword) => !lower.includes(keyword));
+  const keywordMatchScore = percentFromCounts(matchedKeywords.length, roleKeywords.length);
+
+  const bulletLines = extractBulletLines(cleanedText);
+  const bulletCount = bulletLines.length;
+
+  const actionVerbBullets = bulletLines.filter((line) => {
+    const firstWord = line
+      .replace(/^[•*\-\d.\s]+/, "")
+      .split(/\s+/)[0]
+      ?.toLowerCase();
+
+    return ACTION_VERBS.includes(firstWord);
+  });
+
+  const metricBullets = bulletLines.filter((line) =>
+    /(\d+%|\$\d+|\d+\+|\d+ users|\d+ user|\d+ms|\d+ seconds|\d+ hours|\d+ days|\d+x|\b\d+\b)/i.test(
+      line
+    )
+  );
+
+  const weakBullets = bulletLines.filter((line) => {
+    const normalized = line.replace(/^[•*\-\d.\s]+/, "").trim();
+    const firstWord = normalized.split(/\s+/)[0]?.toLowerCase();
+    const hasMetric =
+      /(\d+%|\$\d+|\d+\+|\d+ users|\d+ user|\d+ms|\d+ seconds|\d+ hours|\d+ days|\d+x|\b\d+\b)/i.test(
+        normalized
+      );
+
+    return (
+      normalized.length < 75 ||
+      !ACTION_VERBS.includes(firstWord) ||
+      !hasMetric
+    );
+  });
+
+  const actionVerbRate = bulletCount
+    ? Math.round((actionVerbBullets.length / bulletCount) * 100)
+    : 0;
+
+  const metricRate = bulletCount
+    ? Math.round((metricBullets.length / bulletCount) * 100)
+    : 0;
+
+  const hasEmail = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(cleanedText);
+  const hasLinkedIn = /linkedin\.com/i.test(lower);
+  const hasGitHub = /github\.com/i.test(lower);
+
+  let structureScore = 100;
+  structureScore -= missingSections.length * 18;
+  if (!hasProjects) structureScore -= 8;
+  if (!hasEmail) structureScore -= 10;
+  if (!hasLinkedIn) structureScore -= 4;
+  if (!hasGitHub && role !== "data scientist") structureScore -= 4;
+  structureScore = clamp(structureScore, 10, 100);
+
+  let score =
+    keywordMatchScore * 0.34 +
+    actionVerbRate * 0.22 +
+    metricRate * 0.22 +
+    structureScore * 0.22;
+
+  if (bulletCount < 5) score -= 12;
+  else if (bulletCount < 8) score -= 6;
+
+  if (missingSections.length >= 3) score -= 8;
+  if (targetType === "internship" && !hasProjects) score -= 6;
+
+  score = clamp(Math.round(score), 18, 96);
+
+  const improvementSections = [
+    {
+      id: "keywords",
+      label: "Keyword Coverage",
+      title: "Target the role more directly",
+      priority: keywordMatchScore < 55 ? "high" : keywordMatchScore < 75 ? "medium" : "low",
+      description:
+        keywordMatchScore < 70
+          ? "Your resume is missing too much role-specific language, which can hurt both ATS matching and recruiter confidence."
+          : "Your resume has some relevant language, but it still is not tailored enough to the exact role.",
+      bullets: [
+        keywordMatchScore < 70
+          ? "Add more role-specific terms from the target job description into your skills, projects, and experience bullets."
+          : "Mirror the job description language more closely where it honestly matches your background.",
+        missingKeywords.length
+          ? `Work in missing keywords like: ${missingKeywords.slice(0, 8).join(", ")}.`
+          : "Your keyword targeting is solid, but a few more exact matches would still help.",
+      ],
+    },
+    {
+      id: "bullets",
+      label: "Bullet Strength",
+      title: "Make your experience sound stronger",
+      priority: actionVerbRate < 60 || metricRate < 40 ? "high" : "medium",
+      description:
+        "Your bullet points should sound more outcome-driven and show stronger evidence of impact.",
+      bullets: [
+        actionVerbRate < 70
+          ? "Start more bullets with stronger action verbs like built, designed, optimized, automated, analyzed, or implemented."
+          : "Keep your bullet openings strong and consistent.",
+        metricRate < 50
+          ? "Add numbers, percentages, scale, time savings, performance gains, users, accuracy, or revenue where possible."
+          : "You already use some metrics, but more measurable outcomes would help.",
+        weakBullets.length
+          ? `Rewrite weaker bullets like: ${weakBullets
+              .slice(0, 2)
+              .map((line) => line.replace(/^[•*\-\d.\s]+/, "").slice(0, 90))
+              .join(" • ")}`
+          : "Try to make each bullet follow: action + task + measurable result.",
+      ],
+    },
+    {
+      id: "structure",
+      label: "Structure & Sections",
+      title: "Make the resume easier to trust",
+      priority: missingSections.length > 1 ? "high" : "medium",
+      description:
+        "A better structure makes the resume easier to scan and makes your experience feel more complete.",
+      bullets: [
+        missingSections.length
+          ? `Add or improve these sections: ${missingSections.join(", ")}.`
+          : "Your core sections exist, but they can still be formatted more clearly.",
+        !hasProjects
+          ? "For technical roles, a Projects section usually helps a lot, especially if your experience is limited."
+          : "Keep projects focused on tools used, outcomes, and technical depth.",
+        "Keep formatting ATS-friendly with clear headings, consistent dates, and simple layout choices.",
+      ],
+    },
+  ];
+
+  return {
+    rawText: cleanedText,
+    role,
+    targetType,
+    overallScore: score,
+    score,
+    resumeScore: score,
+    keywordMatchScore,
+    keywordScore: keywordMatchScore,
+    atsKeywordScore: keywordMatchScore,
+    actionVerbRate,
+    metricRate,
+    bulletCount,
+    totalBullets: bulletCount,
+    bulletStats: {
+      totalBullets: bulletCount,
+      actionVerbRate,
+      metricRate,
+    },
+    matchedKeywords,
+    missingKeywords,
+    keywordGaps: missingKeywords,
+    weakBullets: weakBullets.slice(0, 5),
+    missingSections,
+    hasProjects,
+    sectionsFound,
+    contactChecks: {
+      hasEmail,
+      hasLinkedIn,
+      hasGitHub,
+    },
+    improvementSections,
+  };
+}
+
+async function extractTextFromPdf(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+  let fullText = "";
+
+  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+    const page = await pdf.getPage(pageNumber);
+    const content = await page.getTextContent();
+    const pageText = content.items.map((item) => item.str).join(" ");
+    fullText += `${pageText}\n`;
+  }
+
+  return fullText;
+}
+
+async function extractTextFromDocx(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const result = await mammoth.extractRawText({ arrayBuffer });
+  return result.value || "";
+}
+
+async function readResumeFile(file) {
+  const name = file.name.toLowerCase();
+
+  if (name.endsWith(".txt")) {
+    return file.text();
+  }
+
+  if (name.endsWith(".pdf")) {
+    return extractTextFromPdf(file);
+  }
+
+  if (name.endsWith(".docx")) {
+    return extractTextFromDocx(file);
+  }
+
+  if (name.endsWith(".doc")) {
+    throw new Error("Old .doc files are not supported well. Please upload PDF, DOCX, or TXT.");
+  }
+
+  throw new Error("Unsupported file type. Please upload PDF, DOCX, or TXT.");
+}
+
+export default function ResumeToolPage() {
+  const [role, setRole] = useState("software engineer");
+  const [targetType, setTargetType] = useState("job");
+  const [resumeText, setResumeText] = useState("");
+  const [jobDescription, setJobDescription] = useState("");
+  const [fileName, setFileName] = useState("");
+  const [analysis, setAnalysis] = useState(null);
+  const [isLoadingFile, setIsLoadingFile] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [error, setError] = useState("");
+  const [isPremium] = useState(
+    localStorage.getItem("resumePremiumUnlocked") === "true"
+  );
+
+  const paymentLink = process.env.REACT_APP_STRIPE_PAYMENT_LINK || "";
+
+  async function handleFileChange(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setError("");
+    setIsLoadingFile(true);
+    setFileName(file.name);
+
+    try {
+      const text = await readResumeFile(file);
+      setResumeText(text);
+    } catch (err) {
+      setError(err.message || "Could not read that file.");
+      setResumeText("");
+    } finally {
+      setIsLoadingFile(false);
+    }
+  }
+
+  async function handleAnalyze() {
+    setError("");
+
+    if (!resumeText.trim()) {
+      setError("Upload your resume or paste the text first.");
+      return;
+    }
+
+    setIsAnalyzing(true);
+
+    try {
+      const nextAnalysis = analyzeResumeText(resumeText, role, targetType);
+      setAnalysis(nextAnalysis);
+    } catch (err) {
+      setError("Something went wrong while analyzing the resume.");
+    } finally {
+      setIsAnalyzing(false);
+    }
+  }
+
+  function handlePremiumUpgrade() {
+    if (paymentLink) {
+      window.open(paymentLink, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    alert("Add REACT_APP_STRIPE_PAYMENT_LINK to your .env file first.");
+  }
+
+  return (
+    <div style={styles.page}>
+      <div style={styles.hero}>
+        <div style={styles.heroBadge}>resume builder + cover letter generator</div>
+        <h1 style={styles.heroTitle}>Resume grader</h1>
+        <p style={styles.heroSubtitle}>
+          Upload your resume, choose your target role, and get a harsher score
+          based on keywords, ATS fit, bullet quality, structure, and impact.
+        </p>
+      </div>
+
+      <div style={styles.panel}>
+        <div style={styles.controlsGrid}>
+          <div style={styles.controlCard}>
+            <div style={styles.cardLabel}>1. Upload resume</div>
+            <label style={styles.uploadBox}>
+              <input
+                type="file"
+                accept=".pdf,.docx,.txt"
+                onChange={handleFileChange}
+                style={{ display: "none" }}
+              />
+              <span style={styles.uploadTitle}>
+                {isLoadingFile ? "Reading file..." : "Choose PDF, DOCX, or TXT"}
+              </span>
+              <span style={styles.uploadSubtext}>
+                {fileName ? `Loaded: ${fileName}` : "Or paste your resume below"}
+              </span>
+            </label>
+          </div>
+
+          <div style={styles.controlCard}>
+            <div style={styles.cardLabel}>2. Choose role track</div>
+            <select
+              value={role}
+              onChange={(event) => setRole(event.target.value)}
+              style={styles.select}
+            >
+              <option value="software engineer">Software Engineer</option>
+              <option value="data scientist">Data Scientist</option>
+              <option value="backend developer">Backend Developer</option>
+              <option value="frontend developer">Frontend Developer</option>
+              <option value="full stack developer">Full Stack Developer</option>
+            </select>
+          </div>
+
+          <div style={styles.controlCard}>
+            <div style={styles.cardLabel}>3. Choose target type</div>
+            <select
+              value={targetType}
+              onChange={(event) => setTargetType(event.target.value)}
+              style={styles.select}
+            >
+              <option value="job">Job</option>
+              <option value="internship">Internship</option>
+            </select>
+          </div>
+        </div>
+
+        <div style={styles.textAreaGrid}>
+          <div style={styles.textBlock}>
+            <div style={styles.cardLabel}>Resume text</div>
+            <textarea
+              value={resumeText}
+              onChange={(event) => setResumeText(event.target.value)}
+              placeholder="Paste your resume text here if you do not want to upload a file."
+              style={styles.textarea}
+            />
+          </div>
+
+          <div style={styles.textBlock}>
+            <div style={styles.cardLabel}>Job description optional</div>
+            <textarea
+              value={jobDescription}
+              onChange={(event) => setJobDescription(event.target.value)}
+              placeholder="Paste the job description here for the later premium cover letter flow."
+              style={styles.textarea}
+            />
+          </div>
+        </div>
+
+        {error ? <div style={styles.error}>{error}</div> : null}
+
+        <div style={styles.actionRow}>
+          <button
+            type="button"
+            onClick={handleAnalyze}
+            disabled={isAnalyzing || isLoadingFile}
+            style={{
+              ...styles.primaryButton,
+              opacity: isAnalyzing || isLoadingFile ? 0.7 : 1,
+              cursor: isAnalyzing || isLoadingFile ? "not-allowed" : "pointer",
+            }}
+          >
+            {isAnalyzing ? "Analyzing..." : "Analyze resume"}
+          </button>
+        </div>
+      </div>
+
+      {analysis ? (
+        <div style={styles.results}>
+          <ScoreCard analysis={analysis} />
+          <StatsGrid analysis={analysis} />
+          <ImprovementSections analysis={analysis} />
+          <PremiumUpsell
+            isPremium={isPremium}
+            paymentLink={paymentLink}
+            onUpgrade={handlePremiumUpgrade}
+            title="Get the upgraded resume + tailored cover letter"
+            subtitle={
+              jobDescription.trim()
+                ? "Premium can use your uploaded resume and pasted job description to create a stronger rewrite and a role-specific cover letter."
+                : "Premium unlocks unlimited resume upgrades, stronger rewrites that keep your style, and tailored cover letters once you paste a job description."
+            }
+            priceText="$9 one-time"
+            buttonText="Unlock Premium"
+          />
+
+          <div style={styles.bottomNote}>
+            <div style={styles.noteTitle}>Quick note</div>
+            <p style={styles.noteText}>
+              This free grader is meant to be stricter. A score in the 60s or low
+              70s does not mean your resume is bad. It usually means it still needs
+              sharper wording, better metrics, or better job targeting.
+            </p>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+const styles = {
+  page: {
+    minHeight: "100vh",
+    background:
+      "radial-gradient(circle at top, rgba(30,41,59,0.65) 0%, rgba(2,6,23,1) 45%, rgba(2,6,23,1) 100%)",
+    padding: "32px 20px 60px 20px",
+    color: "#f8fafc",
+  },
+  hero: {
+    maxWidth: "1100px",
+    margin: "0 auto 24px auto",
+  },
+  heroBadge: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "8px 12px",
+    borderRadius: "999px",
+    background: "rgba(99, 102, 241, 0.12)",
+    color: "#c7d2fe",
+    border: "1px solid rgba(99, 102, 241, 0.28)",
+    fontSize: "12px",
+    fontWeight: 800,
+    letterSpacing: "0.06em",
+    textTransform: "uppercase",
+    marginBottom: "14px",
+  },
+  heroTitle: {
+    margin: 0,
+    fontSize: "48px",
+    lineHeight: 1.02,
+    fontWeight: 900,
+    letterSpacing: "-0.03em",
+  },
+  heroSubtitle: {
+    margin: "14px 0 0 0",
+    fontSize: "17px",
+    lineHeight: 1.7,
+    color: "#cbd5e1",
+    maxWidth: "820px",
+  },
+  panel: {
+    maxWidth: "1100px",
+    margin: "0 auto",
+    background: "rgba(15, 23, 42, 0.85)",
+    border: "1px solid rgba(148,163,184,0.14)",
+    borderRadius: "26px",
+    padding: "24px",
+    boxShadow: "0 8px 40px rgba(0,0,0,0.26)",
+  },
+  controlsGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+    gap: "16px",
+    marginBottom: "18px",
+  },
+  controlCard: {
+    background: "rgba(255,255,255,0.025)",
+    border: "1px solid rgba(148,163,184,0.12)",
+    borderRadius: "20px",
+    padding: "16px",
+  },
+  cardLabel: {
+    fontSize: "12px",
+    fontWeight: 800,
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+    color: "#94a3b8",
+    marginBottom: "12px",
+  },
+  uploadBox: {
+    display: "block",
+    borderRadius: "16px",
+    border: "1px dashed rgba(148,163,184,0.28)",
+    background: "rgba(255,255,255,0.02)",
+    padding: "18px",
+    cursor: "pointer",
+  },
+  uploadTitle: {
+    display: "block",
+    fontSize: "15px",
+    fontWeight: 700,
+    color: "#f8fafc",
+    marginBottom: "6px",
+  },
+  uploadSubtext: {
+    display: "block",
+    fontSize: "13px",
+    color: "#94a3b8",
+    lineHeight: 1.6,
+  },
+  select: {
+    width: "100%",
+    height: "48px",
+    borderRadius: "14px",
+    border: "1px solid rgba(148,163,184,0.18)",
+    background: "rgba(2,6,23,0.72)",
+    color: "#f8fafc",
+    padding: "0 14px",
+    fontSize: "15px",
+    outline: "none",
+  },
+  textAreaGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+    gap: "16px",
+    marginBottom: "16px",
+  },
+  textBlock: {
+    background: "rgba(255,255,255,0.025)",
+    border: "1px solid rgba(148,163,184,0.12)",
+    borderRadius: "20px",
+    padding: "16px",
+  },
+  textarea: {
+    width: "100%",
+    minHeight: "240px",
+    resize: "vertical",
+    borderRadius: "16px",
+    border: "1px solid rgba(148,163,184,0.18)",
+    background: "rgba(2,6,23,0.72)",
+    color: "#f8fafc",
+    padding: "14px",
+    fontSize: "14px",
+    lineHeight: 1.6,
+    outline: "none",
+    boxSizing: "border-box",
+  },
+  actionRow: {
+    display: "flex",
+    justifyContent: "flex-start",
+    marginTop: "4px",
+  },
+  primaryButton: {
+    border: "none",
+    borderRadius: "16px",
+    padding: "14px 20px",
+    fontSize: "15px",
+    fontWeight: 800,
+    background: "linear-gradient(135deg, #7c3aed 0%, #2563eb 100%)",
+    color: "#ffffff",
+    boxShadow: "0 10px 24px rgba(37,99,235,0.24)",
+  },
+  error: {
+    marginBottom: "14px",
+    padding: "12px 14px",
+    borderRadius: "14px",
+    background: "rgba(239,68,68,0.10)",
+    border: "1px solid rgba(239,68,68,0.25)",
+    color: "#fecaca",
+    fontSize: "14px",
+    lineHeight: 1.6,
+  },
+  results: {
+    maxWidth: "1100px",
+    margin: "26px auto 0 auto",
+  },
+  bottomNote: {
+    borderRadius: "20px",
+    padding: "18px",
+    background: "rgba(15,23,42,0.82)",
+    border: "1px solid rgba(148,163,184,0.12)",
+  },
+  noteTitle: {
+    fontSize: "16px",
+    fontWeight: 800,
+    color: "#f8fafc",
+    marginBottom: "8px",
+  },
+  noteText: {
+    margin: 0,
+    color: "#cbd5e1",
+    fontSize: "14px",
+    lineHeight: 1.7,
+  },
+};

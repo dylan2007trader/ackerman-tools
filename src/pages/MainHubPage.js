@@ -1,15 +1,15 @@
 import React, { useMemo, useState } from "react";
-import "./mainhub.css";
-import { BRAND_LOGO } from "./brandLogo";
+import "./MainHubPage.css";
+import AuthModal from "../components/auth/AuthModal";
+import { BRAND_LOGO } from "../components/BrandLogo";
 import {
   APP_IDS,
   APP_META,
-  createAccount,
   getCurrentUser,
   getPurchasedApps,
-  loginUser,
   logoutUser,
-} from "./accountStore";
+  purchaseAppForCurrentUser,
+} from "../services/accountStore";
 
 const tools = [
   {
@@ -45,33 +45,57 @@ const tools = [
   },
 ];
 
-export default function MainHub() {
+export default function MainHubPage() {
+  const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState("login");
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
   const [currentUser, setCurrentUser] = useState(getCurrentUser());
-  const [loading, setLoading] = useState(false);
+  const [isUnlocking, setIsUnlocking] = useState(false);
 
   const purchasedApps = useMemo(() => getPurchasedApps(), [currentUser]);
+  const hasResumePremium = purchasedApps.includes(APP_IDS.RESUME_SUITE);
 
-  const handleAuth = async () => {
-    setLoading(true);
-    const action = authMode === "signup" ? createAccount : loginUser;
-    const result = await action({ username, password });
-    setMessage(result.message);
-    if (result.ok) {
-      setCurrentUser(getCurrentUser());
-      setPassword("");
+  function refreshUserState(nextMessage = "") {
+    setCurrentUser(getCurrentUser());
+    if (nextMessage) {
+      setMessage(nextMessage);
     }
-    setLoading(false);
-  };
+  }
 
-  const handleLogout = () => {
+  function openAuth(mode = "login") {
+    setAuthMode(mode);
+    setAuthOpen(true);
+  }
+
+  function handleLogout() {
     logoutUser();
     setCurrentUser(null);
     setMessage("Signed out.");
-  };
+  }
+
+  async function handleTestUnlockResumePremium() {
+    if (!currentUser) {
+      setMessage("Sign in first so premium can attach to the right account.");
+      openAuth("login");
+      return;
+    }
+
+    setIsUnlocking(true);
+    setMessage("");
+
+    try {
+      const result = await purchaseAppForCurrentUser(APP_IDS.RESUME_SUITE);
+      setMessage(
+        result?.message ||
+          "Resume premium unlocked for this signed-in account."
+      );
+      setCurrentUser(getCurrentUser());
+    } catch (error) {
+      setMessage("Could not unlock premium right now.");
+    } finally {
+      setIsUnlocking(false);
+    }
+  }
 
   return (
     <div className="hub-page">
@@ -115,9 +139,26 @@ export default function MainHub() {
               >
                 Try the free resume grader
               </a>
-              <a className="hub-btn hub-btn-secondary" href="#account">
-                Create account or sign in
-              </a>
+
+              {!currentUser ? (
+                <button
+                  className="hub-btn hub-btn-secondary"
+                  type="button"
+                  onClick={() => openAuth("signup")}
+                >
+                  Create account or sign in
+                </button>
+              ) : (
+                <button
+                  className="hub-btn hub-btn-secondary"
+                  type="button"
+                  onClick={handleTestUnlockResumePremium}
+                >
+                  {hasResumePremium
+                    ? "Resume premium already active"
+                    : "Test unlock resume premium"}
+                </button>
+              )}
             </div>
 
             <div className="hub-proof-row">
@@ -211,29 +252,59 @@ export default function MainHub() {
           <div className="hub-account-grid">
             <div className="hub-account-card">
               <div className="hub-account-label">CURRENT STATUS</div>
+
               {currentUser ? (
                 <>
                   <h3>Signed in as {currentUser.username}</h3>
                   <p>
                     Purchased apps:{" "}
-                    {purchasedApps.length
-                      ? purchasedApps.join(", ")
-                      : "none yet"}
+                    {purchasedApps.length ? purchasedApps.join(", ") : "none yet"}
                   </p>
-                  <button
-                    className="hub-btn hub-btn-secondary"
-                    type="button"
-                    onClick={handleLogout}
+
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: "12px",
+                      marginTop: "16px",
+                    }}
                   >
-                    Sign out
-                  </button>
+                    <button
+                      className="hub-btn hub-btn-primary"
+                      type="button"
+                      onClick={handleTestUnlockResumePremium}
+                      disabled={isUnlocking || hasResumePremium}
+                      style={{
+                        opacity:
+                          isUnlocking || hasResumePremium ? 0.75 : 1,
+                        cursor:
+                          isUnlocking || hasResumePremium
+                            ? "not-allowed"
+                            : "pointer",
+                      }}
+                    >
+                      {isUnlocking
+                        ? "Unlocking..."
+                        : hasResumePremium
+                        ? "Resume premium active"
+                        : "Test unlock resume premium"}
+                    </button>
+
+                    <button
+                      className="hub-btn hub-btn-secondary"
+                      type="button"
+                      onClick={handleLogout}
+                    >
+                      Sign out
+                    </button>
+                  </div>
                 </>
               ) : (
                 <>
                   <h3>Create account or sign in</h3>
                   <p>
                     Use one account so premium stays attached to the same user
-                    later.
+                    later across future Ackerman Tools apps.
                   </p>
                 </>
               )}
@@ -241,57 +312,43 @@ export default function MainHub() {
 
             {!currentUser ? (
               <div className="hub-auth-card">
-                <div className="hub-auth-tabs">
+                <div style={{ display: "grid", gap: "12px" }}>
                   <button
-                    className={
-                      authMode === "login"
-                        ? "hub-auth-tab hub-auth-tab-active"
-                        : "hub-auth-tab"
-                    }
+                    className="hub-btn hub-btn-primary"
                     type="button"
-                    onClick={() => setAuthMode("login")}
+                    onClick={() => openAuth("login")}
                   >
                     Sign in
                   </button>
+
                   <button
-                    className={
-                      authMode === "signup"
-                        ? "hub-auth-tab hub-auth-tab-active"
-                        : "hub-auth-tab"
-                    }
+                    className="hub-btn hub-btn-secondary"
                     type="button"
-                    onClick={() => setAuthMode("signup")}
+                    onClick={() => openAuth("signup")}
                   >
                     Create account
                   </button>
                 </div>
-
-                <input
-                  className="hub-input"
-                  value={username}
-                  onChange={(event) => setUsername(event.target.value)}
-                  placeholder="username"
-                />
-                <input
-                  className="hub-input"
-                  value={password}
-                  type="password"
-                  onChange={(event) => setPassword(event.target.value)}
-                  placeholder="password"
-                />
-                <button
-                  className="hub-btn hub-btn-primary"
-                  type="button"
-                  onClick={handleAuth}
-                >
-                  {loading
-                    ? "Working..."
-                    : authMode === "signup"
-                    ? "Create account"
-                    : "Sign in"}
-                </button>
               </div>
-            ) : null}
+            ) : (
+              <div className="hub-auth-card">
+                <div className="hub-account-label">RESUME APP ACCESS</div>
+                <h3>
+                  {hasResumePremium
+                    ? "Premium is active for Resume Suite"
+                    : "Resume Suite is not unlocked yet"}
+                </h3>
+                <p>
+                  {hasResumePremium
+                    ? "You can now open the resume tool and test the premium resume and cover letter page flow."
+                    : "For testing, use the unlock button on this hub page so the premium access gets attached to this account."}
+                </p>
+
+                <a className="hub-btn hub-btn-primary" href="/resume-builder#grader">
+                  Open resume app
+                </a>
+              </div>
+            )}
           </div>
 
           {message ? <div className="hub-message">{message}</div> : null}
@@ -348,6 +405,17 @@ export default function MainHub() {
           </div>
         </section>
       </main>
+
+      <AuthModal
+        isOpen={authOpen}
+        onClose={() => setAuthOpen(false)}
+        defaultMode={authMode}
+        onAuthSuccess={(user) => {
+  console.log("AUTH SUCCESS USER:", user);
+  setCurrentUser(getCurrentUser());
+  setMessage("Account ready.");
+}}
+      />
     </div>
   );
 }
