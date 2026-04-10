@@ -38,9 +38,8 @@
   },
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
   "bugs": {
     "url": "https://github.com/dylan2007trader/ackerman-tools/issues"
   },
-  "homepage": "https://github.com/dylan2007trader/ackerman-tools#readme"
+  "homepage": "."
 }
