@@ -6,13 +6,20 @@ import ScoreCard from "../components/resume/ScoreCard";
 import StatsGrid from "../components/resume/StatsGrid";
 import ImprovementSections from "../components/resume/ImprovementSections";
 import PremiumUpsell from "../components/resume/PremiumUpsell";
+import AuthModal from "../components/auth/AuthModal";
 
 import { analyzeResume } from "../utils/resumeAnalyzer";
+import { buildPremiumResume, downloadResumeText, downloadResumeDocx } from "../utils/resumeUpgrader";
+import {
+  buildCoverLetter,
+  buildCoverLetterText,
+  downloadCoverLetterText,
+  printCoverLetterPdf,
+} from "../services/coverBuilder";
 import {
   APP_IDS,
   getCurrentUser,
   hasPurchasedApp,
-  startCheckout,
 } from "../services/accountStore";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
@@ -110,9 +117,17 @@ export default function ResumeToolPage() {
   const [error, setError] = useState("");
   const [premiumMessage, setPremiumMessage] = useState("");
 
-  const currentUser = getCurrentUser();
-  //const isPremium = hasPurchasedApp(APP_ID);
-  const FORCE_PREMIUM_TEST = false;
+  // Premium output state
+  const [premiumTab, setPremiumTab] = useState("resume");
+  const [generatedResume, setGeneratedResume] = useState("");
+  const [missingItems, setMissingItems] = useState([]);
+  const [isGeneratingResume, setIsGeneratingResume] = useState(false);
+  const [generatedCoverLetter, setGeneratedCoverLetter] = useState(null);
+  const [isGeneratingCoverLetter, setIsGeneratingCoverLetter] = useState(false);
+  const [copyNotice, setCopyNotice] = useState("");
+  const [authOpen, setAuthOpen] = useState(false);
+
+  const [currentUser, setCurrentUser] = useState(getCurrentUser());
   const isPremium = hasPurchasedApp(APP_IDS.RESUME_SUITE);
   
   async function handleFileChange(event) {
@@ -158,11 +173,95 @@ export default function ResumeToolPage() {
     }
   }
 
-  async function handlePremiumUpgrade() {
-  setPremiumMessage(
-    "Premium button clicked successfully. This is a test state before Stripe/backend is connected."
-  );
-}
+  function handlePremiumUpgrade() {
+    if (!currentUser) {
+      setAuthOpen(true);
+      return;
+    }
+    setPremiumMessage(
+      "Payment integration coming soon. To test premium features now, go back to the main hub and click 'Test unlock resume premium' on your account."
+    );
+  }
+
+  function handleGenerateResume() {
+    if (!isPremium) {
+      handlePremiumUpgrade();
+      return;
+    }
+    if (!resumeText.trim()) {
+      setError("Upload your resume first, then generate the upgrade.");
+      return;
+    }
+    setIsGeneratingResume(true);
+    setError("");
+    try {
+      const { upgradedResume, missingItems: missing } = buildPremiumResume(
+        resumeText,
+        role,
+        analysis || {}
+      );
+      setGeneratedResume(upgradedResume);
+      setMissingItems(missing);
+      setPremiumTab("resume");
+    } catch (err) {
+      setError("Could not generate the upgraded resume.");
+      console.error(err);
+    } finally {
+      setIsGeneratingResume(false);
+    }
+  }
+
+  function handleGenerateCoverLetter() {
+    if (!isPremium) {
+      handlePremiumUpgrade();
+      return;
+    }
+    if (!resumeText.trim()) {
+      setError("Upload your resume first.");
+      return;
+    }
+    if (!jobDescription.trim()) {
+      setError("Paste a job description before generating the cover letter.");
+      return;
+    }
+    setIsGeneratingCoverLetter(true);
+    setError("");
+    try {
+      const letter = buildCoverLetter({
+        resumeText,
+        jobDescription,
+        targetRole: role,
+      });
+      setGeneratedCoverLetter(letter);
+      setPremiumTab("cover");
+    } catch (err) {
+      setError("Could not generate the cover letter.");
+      console.error(err);
+    } finally {
+      setIsGeneratingCoverLetter(false);
+    }
+  }
+
+  async function handleCopy(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyNotice("Copied to clipboard!");
+      setTimeout(() => setCopyNotice(""), 2500);
+    } catch {
+      setCopyNotice("Copy failed — select the text manually.");
+      setTimeout(() => setCopyNotice(""), 2500);
+    }
+  }
+
+  async function handleDownloadResumeDocx() {
+    if (!generatedResume) return;
+    try {
+      await downloadResumeDocx(generatedResume, "upgraded_resume.docx");
+    } catch (err) {
+      setError("DOCX download failed. Try the text download instead.");
+      console.error(err);
+    }
+  }
 
   return (
     <div style={styles.page}>
@@ -253,19 +352,36 @@ export default function ResumeToolPage() {
           </div>
 
           <div style={styles.textBlock}>
-            <div style={styles.cardLabel}>Premium-only job description</div>
+            <div style={styles.cardLabel}>
+              Job description
+              {!isPremium && (
+                <span style={styles.premiumTag}>Premium</span>
+              )}
+            </div>
             {isPremium ? (
               <textarea
                 value={jobDescription}
                 onChange={(event) => setJobDescription(event.target.value)}
-                placeholder="Paste a job description here for the premium rewrite / cover letter flow."
+                placeholder="Paste the full job description here. The cover letter generator will use it to tailor your letter to this specific role and company."
                 style={styles.textarea}
               />
             ) : (
               <div style={styles.lockedBox}>
-                This stays locked until premium. The free grader should hook the
-                user first, then premium should sell the rewrite + cover letter
-                outcome.
+                <div style={{ fontWeight: 800, marginBottom: 8, color: "#fde68a" }}>
+                  Unlock to access cover letter generation
+                </div>
+                Paste a job description here after unlocking premium ($9 one-time).
+                The cover letter generator will write a tailored 3-paragraph letter
+                using your resume and this job description.
+                <div style={{ marginTop: 14 }}>
+                  <button
+                    type="button"
+                    onClick={handlePremiumUpgrade}
+                    style={styles.unlockButton}
+                  >
+                    Unlock Premium — $9
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -613,120 +729,179 @@ export default function ResumeToolPage() {
             </section>
           </div>
 
-          <div style={styles.premiumOutputGrid}>
-            <section style={styles.premiumGenerateCard}>
-              <div style={styles.eyebrowSmall}>step 2</div>
-              <div style={styles.premiumLockedRow}>
-                <h3 style={styles.generateTitle}>Generate unlimited premium outputs.</h3>
-                <span style={styles.lockBadge}>
-                  {isPremium ? "Premium active" : "Premium locked"}
-                </span>
-              </div>
-
-              <p style={styles.generateText}>
-                Premium uses the same core resume and turns it into a cleaner
-                upgraded version plus tailored cover letters for related jobs.
-              </p>
-
-              <button
-                type="button"
-                style={styles.primaryWideButton}
-                onClick={handlePremiumUpgrade}
-              >
-                Generate upgraded resume
-              </button>
-
-              <button
-                type="button"
-                style={styles.secondaryWideButton}
-                onClick={handlePremiumUpgrade}
-              >
-                Generate tailored cover letter
-              </button>
-
-              <div style={styles.variantRow}>
-                <Pill tone="default">ATS Clean</Pill>
-                <Pill tone="default">Recruiter Friendly</Pill>
-              </div>
-
-              <div style={styles.targetingCard}>
-                <h4 style={styles.targetingTitle}>Job description targeting</h4>
-                {isPremium ? (
-                  <p style={styles.targetingText}>
-                    Paste a real job description to see matched and missing target
-                    signals here.
-                  </p>
-                ) : (
-                  <>
-                    <div style={styles.targetingLocked}>
-                      Paste a job description to tailor the premium rewrite toward
-                      a specific role.
-                    </div>
-                    <p style={styles.targetingText}>
-                      Paste a real job description to see matched and missing target
-                      signals here.
-                    </p>
-                  </>
-                )}
-              </div>
-            </section>
-
-            <section style={styles.premiumOutputCard}>
-              <div style={styles.eyebrowSmall}>premium resume</div>
-              <h3 style={styles.sectionTitle}>ATS Clean preview</h3>
-
-              <div style={styles.outputButtons}>
-                <button style={styles.smallActionButton} type="button">
-                  Copy resume
-                </button>
-                <button style={styles.smallActionButton} type="button">
-                  Download text
-                </button>
-                <button style={styles.smallActionButton} type="button">
-                  Download DOCX
-                </button>
-                <button style={styles.smallActionButton} type="button">
-                  Download HTML
-                </button>
-                <button style={styles.smallActionButton} type="button">
-                  Print / Save PDF
-                </button>
-              </div>
-
-              <div style={styles.outputPreview}>
-                {isPremium
-                  ? "Premium upgraded resume preview will appear here after generation."
-                  : "Unlock premium to generate the upgraded resume."}
-              </div>
-            </section>
-
-            <section style={styles.premiumOutputCard}>
-              <div style={styles.eyebrowSmall}>tailored cover letter</div>
-              <h3 style={styles.sectionTitle}>
-                Unlimited generations from related jobs after purchase
+          {/* Premium generate buttons */}
+          <div style={styles.premiumGenerateRow}>
+            <div style={styles.premiumLockedRow}>
+              <h3 style={styles.generateTitle}>
+                Premium outputs
               </h3>
-
-              <div style={styles.outputButtons}>
-                <button style={styles.smallActionButton} type="button">
-                  Copy cover letter
-                </button>
-                <button style={styles.smallActionButton} type="button">
-                  Download text
-                </button>
-                <button style={styles.smallActionButton} type="button">
-                  Download HTML
-                </button>
-                <button style={styles.smallActionButton} type="button">
-                  Print / Save PDF
-                </button>
-              </div>
-
-              <div style={styles.outputPreview}>
-                Tailored cover letters appear here after the user pastes a related
-                job description and clicks generate.
-              </div>
-            </section>
+              <span style={isPremium ? styles.lockBadgeActive : styles.lockBadge}>
+                {isPremium ? "Premium active" : "Premium locked"}
+              </span>
+            </div>
+            <p style={styles.generateText}>
+              Generate an upgraded version of your resume and a tailored cover letter.
+              Both are unlimited after the one-time $9 purchase.
+            </p>
+            <div style={styles.generateButtonRow}>
+              <button
+                type="button"
+                style={{
+                  ...styles.primaryWideButton,
+                  opacity: isGeneratingResume ? 0.7 : 1,
+                  cursor: isGeneratingResume ? "not-allowed" : "pointer",
+                }}
+                onClick={handleGenerateResume}
+                disabled={isGeneratingResume}
+              >
+                {isGeneratingResume ? "Generating resume..." : "Generate upgraded resume"}
+              </button>
+              <button
+                type="button"
+                style={{
+                  ...styles.secondaryWideButton,
+                  opacity: isGeneratingCoverLetter ? 0.7 : 1,
+                  cursor: isGeneratingCoverLetter ? "not-allowed" : "pointer",
+                }}
+                onClick={handleGenerateCoverLetter}
+                disabled={isGeneratingCoverLetter}
+              >
+                {isGeneratingCoverLetter ? "Generating cover letter..." : "Generate tailored cover letter"}
+              </button>
+            </div>
           </div>
+
+          {/* Tab switcher and output area */}
+          {(generatedResume || generatedCoverLetter) && (
+            <div style={styles.premiumOutputSection}>
+              <div style={styles.tabRow}>
+                <button
+                  type="button"
+                  style={premiumTab === "resume" ? styles.tabActive : styles.tab}
+                  onClick={() => setPremiumTab("resume")}
+                >
+                  Upgraded Resume
+                </button>
+                <button
+                  type="button"
+                  style={premiumTab === "cover" ? styles.tabActive : styles.tab}
+                  onClick={() => setPremiumTab("cover")}
+                >
+                  Cover Letter
+                </button>
+              </div>
+
+              {/* Resume output */}
+              {premiumTab === "resume" && (
+                <div style={styles.outputCard}>
+                  <div style={styles.outputCardHeader}>
+                    <div>
+                      <div style={styles.eyebrowSmall}>upgraded resume</div>
+                      <h3 style={styles.sectionTitle}>ATS-optimized version</h3>
+                      <p style={styles.outputMeta}>
+                        Improved bullet language, stronger action verbs, and ATS vocabulary.
+                        Your original structure and style are preserved.
+                      </p>
+                    </div>
+                    <div style={styles.outputButtons}>
+                      <button
+                        type="button"
+                        style={styles.smallActionButton}
+                        onClick={() => handleCopy(generatedResume)}
+                      >
+                        Copy
+                      </button>
+                      <button
+                        type="button"
+                        style={styles.smallActionButton}
+                        onClick={() => downloadResumeText(generatedResume, "upgraded_resume.txt")}
+                      >
+                        Download TXT
+                      </button>
+                      <button
+                        type="button"
+                        style={styles.smallActionButton}
+                        onClick={handleDownloadResumeDocx}
+                      >
+                        Download DOCX
+                      </button>
+                    </div>
+                  </div>
+
+                  {missingItems.length > 0 && (
+                    <div style={styles.missingItemsBox}>
+                      <div style={styles.missingTitle}>
+                        Items to add manually before using this resume
+                      </div>
+                      {missingItems.map((item, i) => (
+                        <div key={i} style={styles.missingItem}>
+                          <span style={styles.missingField}>{item.field}</span>
+                          <span style={styles.missingReason}>{item.reason}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <pre style={styles.outputPreview}>{generatedResume}</pre>
+                </div>
+              )}
+
+              {/* Cover letter output */}
+              {premiumTab === "cover" && generatedCoverLetter && (
+                <div style={styles.outputCard}>
+                  <div style={styles.outputCardHeader}>
+                    <div>
+                      <div style={styles.eyebrowSmall}>tailored cover letter</div>
+                      <h3 style={styles.sectionTitle}>Ready to send</h3>
+                      <p style={styles.outputMeta}>
+                        3-paragraph cover letter tailored to the job description you pasted.
+                        Generate a new one for any related job — unlimited.
+                      </p>
+                    </div>
+                    <div style={styles.outputButtons}>
+                      <button
+                        type="button"
+                        style={styles.smallActionButton}
+                        onClick={() => handleCopy(buildCoverLetterText(generatedCoverLetter))}
+                      >
+                        Copy
+                      </button>
+                      <button
+                        type="button"
+                        style={styles.smallActionButton}
+                        onClick={() => downloadCoverLetterText(generatedCoverLetter, "cover_letter.txt")}
+                      >
+                        Download TXT
+                      </button>
+                      <button
+                        type="button"
+                        style={styles.smallActionButton}
+                        onClick={() => printCoverLetterPdf(generatedCoverLetter)}
+                      >
+                        Print / Save PDF
+                      </button>
+                    </div>
+                  </div>
+
+                  <pre style={styles.outputPreview}>
+                    {buildCoverLetterText(generatedCoverLetter)}
+                  </pre>
+                </div>
+              )}
+
+              {premiumTab === "cover" && !generatedCoverLetter && (
+                <div style={styles.outputCard}>
+                  <p style={{ color: "#94a3b8", margin: 0 }}>
+                    Paste a job description above and click "Generate tailored cover letter" to create your cover letter.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {copyNotice && (
+            <div style={styles.copyToast}>{copyNotice}</div>
+          )}
 
           <PremiumUpsell
             isPremium={isPremium}
@@ -734,14 +909,25 @@ export default function ResumeToolPage() {
             title="Get the upgraded resume + tailored cover letter"
             subtitle={
               isPremium
-                ? "Premium is active on your account. The next step is building the stronger resume rewrite and cover letter flow."
-                : "Premium unlocks stronger rewrites that keep the user's style, plus tailored cover letters tied to a pasted job description."
+                ? "Premium is active. Generate your upgraded resume and unlimited cover letters above."
+                : "One $9 payment unlocks an upgraded version of your resume plus unlimited tailored cover letters for any job you apply to."
             }
             priceText="$9 one-time"
             buttonText="Unlock Premium"
           />
         </div>
       ) : null}
+
+      <AuthModal
+        isOpen={authOpen}
+        onClose={() => setAuthOpen(false)}
+        defaultMode="login"
+        onAuthSuccess={() => {
+          setCurrentUser(getCurrentUser());
+          setAuthOpen(false);
+          setPremiumMessage("Signed in. Go to the main hub to unlock premium, then come back here.");
+        }}
+      />
     </div>
   );
 }
@@ -1254,5 +1440,163 @@ const styles = {
     paddingLeft: "22px",
     color: "#e2e8f0",
     lineHeight: 1.8,
+  },
+  // New premium section styles
+  premiumTag: {
+    display: "inline-flex",
+    alignItems: "center",
+    marginLeft: "8px",
+    padding: "2px 8px",
+    borderRadius: "999px",
+    background: "rgba(251,191,36,0.15)",
+    border: "1px solid rgba(251,191,36,0.3)",
+    color: "#fde68a",
+    fontSize: "11px",
+    fontWeight: 800,
+    letterSpacing: "0.06em",
+    verticalAlign: "middle",
+  },
+  unlockButton: {
+    border: "none",
+    borderRadius: "14px",
+    padding: "12px 18px",
+    fontSize: "14px",
+    fontWeight: 800,
+    cursor: "pointer",
+    background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
+    color: "#1c1410",
+  },
+  premiumGenerateRow: {
+    borderRadius: "22px",
+    padding: "20px",
+    background: "linear-gradient(180deg, rgba(15,23,42,0.92) 0%, rgba(10,15,27,0.98) 100%)",
+    border: "1px solid rgba(99,102,241,0.22)",
+    marginBottom: "20px",
+  },
+  generateButtonRow: {
+    display: "flex",
+    gap: "12px",
+    flexWrap: "wrap",
+  },
+  lockBadgeActive: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "8px 12px",
+    borderRadius: "999px",
+    background: "rgba(34,197,94,0.12)",
+    border: "1px solid rgba(34,197,94,0.25)",
+    color: "#86efac",
+    fontSize: "12px",
+    fontWeight: 800,
+  },
+  premiumOutputSection: {
+    marginBottom: "24px",
+  },
+  tabRow: {
+    display: "flex",
+    gap: "8px",
+    marginBottom: "14px",
+  },
+  tab: {
+    border: "1px solid rgba(148,163,184,0.20)",
+    borderRadius: "12px",
+    padding: "10px 18px",
+    fontSize: "14px",
+    fontWeight: 700,
+    cursor: "pointer",
+    background: "transparent",
+    color: "#94a3b8",
+  },
+  tabActive: {
+    border: "1px solid rgba(99,102,241,0.4)",
+    borderRadius: "12px",
+    padding: "10px 18px",
+    fontSize: "14px",
+    fontWeight: 800,
+    cursor: "pointer",
+    background: "rgba(99,102,241,0.14)",
+    color: "#c7d2fe",
+  },
+  outputCard: {
+    borderRadius: "22px",
+    padding: "20px",
+    background: "linear-gradient(180deg, rgba(15,23,42,0.92) 0%, rgba(10,15,27,0.98) 100%)",
+    border: "1px solid rgba(148,163,184,0.14)",
+  },
+  outputCardHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: "16px",
+    flexWrap: "wrap",
+    marginBottom: "16px",
+  },
+  outputMeta: {
+    margin: "6px 0 0 0",
+    fontSize: "14px",
+    lineHeight: 1.6,
+    color: "#94a3b8",
+  },
+  missingItemsBox: {
+    borderRadius: "16px",
+    padding: "16px",
+    background: "rgba(245,158,11,0.07)",
+    border: "1px solid rgba(245,158,11,0.22)",
+    marginBottom: "16px",
+  },
+  missingTitle: {
+    fontSize: "13px",
+    fontWeight: 800,
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+    color: "#fde68a",
+    marginBottom: "12px",
+  },
+  missingItem: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "2px",
+    marginBottom: "10px",
+  },
+  missingField: {
+    fontSize: "14px",
+    fontWeight: 800,
+    color: "#fbbf24",
+  },
+  missingReason: {
+    fontSize: "13px",
+    color: "#fde68a",
+    lineHeight: 1.55,
+    opacity: 0.85,
+  },
+  outputPreview: {
+    margin: 0,
+    minHeight: "320px",
+    maxHeight: "600px",
+    overflowY: "auto",
+    borderRadius: "18px",
+    padding: "18px",
+    border: "1px solid rgba(148,163,184,0.14)",
+    background: "rgba(255,255,255,0.02)",
+    color: "#cbd5e1",
+    fontSize: "14px",
+    lineHeight: 1.75,
+    whiteSpace: "pre-wrap",
+    fontFamily: "inherit",
+  },
+  copyToast: {
+    position: "fixed",
+    bottom: "24px",
+    right: "24px",
+    padding: "12px 18px",
+    borderRadius: "14px",
+    background: "#1e293b",
+    border: "1px solid rgba(148,163,184,0.22)",
+    color: "#f8fafc",
+    fontSize: "14px",
+    fontWeight: 700,
+    zIndex: 999,
+    boxShadow: "0 12px 32px rgba(0,0,0,0.4)",
   },
 };
