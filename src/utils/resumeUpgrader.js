@@ -659,62 +659,573 @@ export async function downloadResumeDocx(text = "", filename = "upgraded_resume.
   URL.revokeObjectURL(url);
 }
 
-function escapeHtml(text) {
-  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+// ─── PDF renderer (Terrence Kuo layout style) ───────────────────────────────
+
+function esc(s = "") {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-export function downloadResumePdf(text = "", filename = "upgraded_resume.pdf") {
-  const HEADING_RE =
-    /^(SUMMARY|OBJECTIVE|EDUCATION|EXPERIENCE|PROJECTS?|SKILLS?|WORK EXPERIENCE|TECHNICAL SKILLS?|LEADERSHIP|ACTIVITIES|CERTIFICATIONS?|PROFESSIONAL SUMMARY|AWARDS?|ACHIEVEMENTS?|EXTRACURRICULARS?)/i;
+// ── Regex helpers ──────────────────────────────────────────────────────────
 
-  let body = "";
-  for (const line of text.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed) { body += '<div class="gap"></div>'; continue; }
-    if (HEADING_RE.test(trimmed) && trimmed.length < 55) {
-      body += `<div class="heading">${escapeHtml(trimmed)}</div>`;
-    } else if (/^[-*•\u2022]/.test(trimmed)) {
-      body += `<div class="bullet">&#8226; ${escapeHtml(trimmed.replace(/^[-*•\u2022]\s*/, ""))}</div>`;
+const SECTION_RE =
+  /^(SUMMARY|OBJECTIVE|EDUCATION|EXPERIENCE|WORK EXPERIENCE|PROJECTS?|SKILLS?|TECHNICAL SKILLS?|LEADERSHIP|ACTIVITIES|CERTIFICATIONS?|AWARDS?|ACHIEVEMENTS?|EXTRACURRICULARS?|PROFESSIONAL SUMMARY)/i;
+
+// Date fragment: matches "Aug 2025", "Sept 2024", "Present", bare year "2024"
+const DATE_FRAG =
+  /(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s*\.?\s*\d{4}|\bPresent\b|\b\d{4}\b/i;
+
+// Full date range at end of a line: "Feb 2026 – Present", "Sept 2024 – Nov 2025", "2024 – 2025"
+const DATE_RANGE_RE =
+  /(?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[\w\s.]*?\d{4}|Present|\d{4})\s*[–\-]\s*(?:Present|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[\w\s.]*?\d{4}|\d{4})\s*$|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[\w\s.]*?\d{4}\s*$/i;
+
+// ── Job header parser ──────────────────────────────────────────────────────
+
+function parseJobHeader(line) {
+  // Extract trailing date range first
+  const dateMatch = line.match(DATE_RANGE_RE);
+  const dates = dateMatch ? dateMatch[0].trim() : "";
+  const withoutDate = dates
+    ? line.slice(0, line.lastIndexOf(dates)).replace(/\s+$/, "")
+    : line;
+
+  // Split remaining on " – " or " - "
+  const parts = withoutDate.split(/\s*[–\-]\s*/).map((s) => s.trim()).filter(Boolean);
+
+  if (parts.length >= 3) {
+    return { title: parts[0], company: parts.slice(1, -1).join(", "), location: parts[parts.length - 1], dates };
+  }
+  if (parts.length === 2) {
+    return { title: parts[0], company: parts[1], location: "", dates };
+  }
+  return { title: withoutDate.trim(), company: "", location: "", dates };
+}
+
+// ── Education line parser ──────────────────────────────────────────────────
+
+function parseEduLine(line) {
+  const dateMatch = line.match(DATE_RANGE_RE);
+  const dates = dateMatch ? dateMatch[0].trim() : "";
+  const withoutDate = dates
+    ? line.slice(0, line.lastIndexOf(dates)).replace(/\s+$/, "")
+    : line;
+
+  // "University of Arizona, Tucson, AZ" → last comma-part may be city/state
+  const commaIdx = withoutDate.lastIndexOf(",");
+  const institution = commaIdx > 0 ? withoutDate.slice(0, commaIdx).trim() : withoutDate.trim();
+  const location = commaIdx > 0 ? withoutDate.slice(commaIdx + 1).trim() : "";
+
+  return { institution, location, dates };
+}
+
+// ── Skills proficient/familiar split ─────────────────────────────────────
+
+function splitSkills(skillsLines, resumeText) {
+  // Collect all text from non-skills sections (bullets + regular lines)
+  // Anything mentioned in bullets = likely proficient
+  const allKnownTech = [
+    "Python", "Java", "JavaScript", "TypeScript", "React", "Node.js", "Express",
+    "SQL", "PostgreSQL", "MySQL", "MongoDB", "SQLite", "Redis", "Pandas", "NumPy",
+    "Git", "GitHub", "AWS", "Docker", "Kubernetes", "HTML", "CSS", "Sass",
+    "scikit-learn", "TensorFlow", "PyTorch", "Agile", "CI/CD", "REST", "GraphQL",
+    "Linux", "Bash", "C++", "C#", "Go", "Swift", "Kotlin", "MATLAB",
+    "object-oriented programming", "data structures", "algorithms",
+  ];
+
+  // Collect tech from bullet points
+  const bulletText = (resumeText.match(/^[•\-–*].+$/gm) || []).join(" ").toLowerCase();
+  const proficientSet = new Set();
+  const familiarSet = new Set();
+
+  // Flatten all skill terms from the skills section lines
+  const rawTerms = [];
+  for (const line of skillsLines) {
+    const afterColon = line.includes(":") ? line.slice(line.indexOf(":") + 1) : line;
+    afterColon.split(/,\s*/).forEach((t) => {
+      const clean = t.trim();
+      if (clean) rawTerms.push(clean);
+    });
+  }
+
+  for (const term of rawTerms) {
+    const lower = term.toLowerCase();
+    const inBullets = bulletText.includes(lower) ||
+      allKnownTech.some((k) => k.toLowerCase() === lower && bulletText.includes(lower));
+    if (inBullets) {
+      proficientSet.add(term);
     } else {
-      body += `<div class="line">${escapeHtml(trimmed)}</div>`;
+      familiarSet.add(term);
     }
   }
 
-  const html = `<!DOCTYPE html>
-<html>
+  return {
+    proficient: [...proficientSet],
+    familiar: [...familiarSet],
+  };
+}
+
+// ── Tech extractor for "Utilized:" line ───────────────────────────────────
+
+const TECH_PATTERN = new RegExp(
+  `\\b(${[
+    "React", "Node\\.js", "Express", "Next\\.js", "Vue", "Angular",
+    "TypeScript", "JavaScript", "Python", "Java", "C\\+\\+", "C#", "Go", "Swift",
+    "SQL", "PostgreSQL", "MySQL", "MongoDB", "SQLite", "Redis",
+    "AWS", "Docker", "Git", "GitHub", "HTML", "CSS",
+    "Pandas", "NumPy", "scikit-learn", "TensorFlow", "PyTorch",
+    "REST", "GraphQL", "JWT", "CI/CD", "Linux", "Bash", "Agile",
+  ].join("|")})\\b`,
+  "gi"
+);
+
+function extractTechFromBullets(bullets) {
+  const found = new Set();
+  const combined = bullets.join(" ");
+  let m;
+  const re = new RegExp(TECH_PATTERN.source, "gi");
+  while ((m = re.exec(combined)) !== null) {
+    found.add(m[1]);
+  }
+  return [...found];
+}
+
+// ── Section renderer ───────────────────────────────────────────────────────
+
+function renderSection(heading, sectionLines, fullText) {
+  const type = heading.replace(/s$/i, "").toLowerCase()
+    .replace("work experience", "experience")
+    .replace("technical skill", "skill");
+
+  let html = `<div class="section">
+    <div class="sec-heading">${esc(heading)}</div>
+    <hr class="sec-rule"/>`;
+
+  if (type.includes("experience")) {
+    html += renderExperience(sectionLines);
+  } else if (type.includes("education")) {
+    html += renderEducation(sectionLines);
+  } else if (type.includes("project")) {
+    html += renderProjects(sectionLines);
+  } else if (type.includes("skill")) {
+    html += renderSkills(sectionLines, fullText);
+  } else {
+    // Generic: summary, objective, awards, etc.
+    for (const line of sectionLines) {
+      if (!line.trim()) continue;
+      if (/^[•\-–*]\s/.test(line)) {
+        html += `<div class="dash-bullet">&#8211;&nbsp; ${esc(line.replace(/^[•\-–*]\s*/, ""))}</div>`;
+      } else {
+        html += `<p class="body-line">${esc(line)}</p>`;
+      }
+    }
+  }
+
+  html += `</div>`;
+  return html;
+}
+
+function renderExperience(lines) {
+  let html = "";
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+    if (!line.trim()) { i++; continue; }
+
+    // Detect job header: has date fragment and at least one " – "
+    if (DATE_FRAG.test(line) && /[–\-]/.test(line) && !/^[•\-–*]\s/.test(line)) {
+      const { title, company, location, dates } = parseJobHeader(line);
+      html += `<div class="job-header">
+        <span class="job-title">${esc([title, company].filter(Boolean).join(", "))}</span>
+        <span class="job-location">${esc(location)}</span>
+        <span class="job-date">${esc(dates)}</span>
+      </div>`;
+      i++;
+
+      // Collect bullets for this job
+      while (i < lines.length) {
+        const bl = lines[i];
+        if (!bl.trim()) { i++; continue; }
+        if (DATE_FRAG.test(bl) && /[–\-]/.test(bl) && !/^[•\-–*]\s/.test(bl)) break; // next job
+        if (SECTION_RE.test(bl) && bl.length < 55) break;
+        if (/^[•\-–*]\s/.test(bl)) {
+          html += `<div class="dash-bullet">&#8211;&nbsp; ${esc(bl.replace(/^[•\-–*]\s*/, ""))}</div>`;
+        } else {
+          html += `<div class="job-desc">${esc(bl)}</div>`;
+        }
+        i++;
+      }
+      html += `<div class="job-gap"></div>`;
+    } else {
+      // Plain line not matching job header pattern
+      html += `<div class="body-line">${esc(line)}</div>`;
+      i++;
+    }
+  }
+  return html;
+}
+
+function renderEducation(lines) {
+  let html = "";
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+    if (!line.trim()) { i++; continue; }
+
+    if (DATE_FRAG.test(line) && !/^[•\-–*]\s/.test(line)) {
+      const { institution, location, dates } = parseEduLine(line);
+      html += `<div class="job-header">
+        <span class="job-title">${esc(institution)}</span>
+        <span class="job-location">${esc(location)}</span>
+        <span class="job-date">${esc(dates)}</span>
+      </div>`;
+      i++;
+      // Degree lines follow
+      while (i < lines.length && lines[i].trim() && !DATE_FRAG.test(lines[i]) && !/^[•\-–*]\s/.test(lines[i])) {
+        const degLine = lines[i].replace(/GPA\s*[:\s]?\s*([\d.]+)/i, (_, g) => `— GPA: ${g}`);
+        html += `<div class="edu-degree">${esc(degLine.trim())}</div>`;
+        i++;
+      }
+      html += `<div class="job-gap"></div>`;
+    } else if (/^[•\-–*]\s/.test(line)) {
+      html += `<div class="dash-bullet">&#8211;&nbsp; ${esc(line.replace(/^[•\-–*]\s*/, ""))}</div>`;
+      i++;
+    } else {
+      html += `<div class="body-line">${esc(line)}</div>`;
+      i++;
+    }
+  }
+  return html;
+}
+
+function renderProjects(lines) {
+  let html = "";
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+    if (!line.trim()) { i++; continue; }
+
+    // Project name: non-bullet, no date, not a section header — probably a project title
+    if (
+      !/^[•\-–*]\s/.test(line) &&
+      !DATE_FRAG.test(line) &&
+      !(SECTION_RE.test(line) && line.length < 55) &&
+      !/^utilized\s*:/i.test(line)
+    ) {
+      html += `<div class="project-name">${esc(line)}</div>`;
+      i++;
+
+      // Optional subtitle (italic): e.g. "University of Arizona – Data Science Coursework"
+      if (i < lines.length && lines[i].trim() && !/^[•\-–*]\s/.test(lines[i]) && !DATE_FRAG.test(lines[i])) {
+        html += `<div class="project-sub">${esc(lines[i])}</div>`;
+        i++;
+      }
+
+      // Collect bullets
+      const projectBullets = [];
+      let hasUtilized = false;
+
+      while (i < lines.length) {
+        const bl = lines[i];
+        if (!bl.trim()) { i++; break; }
+        if (!/^[•\-–*]\s/.test(bl) && !(/^utilized\s*:/i.test(bl)) &&
+            !DATE_FRAG.test(bl) && !(SECTION_RE.test(bl) && bl.length < 55)) {
+          // Looks like the next project name
+          break;
+        }
+        if (/^utilized\s*:/i.test(bl)) {
+          html += projectBullets.map(
+            (b) => `<div class="dash-bullet">&#8211;&nbsp; ${esc(b)}</div>`
+          ).join("");
+          projectBullets.length = 0;
+          html += `<div class="utilized">${esc(bl)}</div>`;
+          hasUtilized = true;
+          i++;
+          continue;
+        }
+        projectBullets.push(bl.replace(/^[•\-–*]\s*/, ""));
+        i++;
+      }
+
+      // Render remaining bullets
+      html += projectBullets.map(
+        (b) => `<div class="dash-bullet">&#8211;&nbsp; ${esc(b)}</div>`
+      ).join("");
+
+      // Auto-generate "Utilized:" if not already present
+      if (!hasUtilized && projectBullets.length > 0) {
+        const tech = extractTechFromBullets(projectBullets);
+        if (tech.length) {
+          html += `<div class="utilized">Utilized: ${esc(tech.join(", "))}</div>`;
+        }
+      }
+
+      html += `<div class="job-gap"></div>`;
+    } else if (/^[•\-–*]\s/.test(line)) {
+      html += `<div class="dash-bullet">&#8211;&nbsp; ${esc(line.replace(/^[•\-–*]\s*/, ""))}</div>`;
+      i++;
+    } else {
+      html += `<div class="body-line">${esc(line)}</div>`;
+      i++;
+    }
+  }
+  return html;
+}
+
+function renderSkills(lines, fullText) {
+  const { proficient, familiar } = splitSkills(lines, fullText);
+
+  // Also handle "Additional ATS keywords" line
+  const atsLine = lines.find((l) => /^additional ats keywords/i.test(l));
+  const atsKeywords = atsLine
+    ? atsLine.replace(/^additional ats keywords\s*[:\-]\s*/i, "").trim()
+    : "";
+
+  let html = "";
+
+  if (proficient.length || familiar.length) {
+    if (proficient.length) {
+      html += `<div class="skill-row"><span class="skill-label">Proficient:</span> ${esc(proficient.join(", "))}</div>`;
+    }
+    if (familiar.length) {
+      html += `<div class="skill-row"><span class="skill-label">Familiar:</span> ${esc(familiar.join(", "))}</div>`;
+    }
+  } else {
+    // Fallback: render lines as-is
+    for (const line of lines) {
+      if (!line.trim() || /^additional ats keywords/i.test(line)) continue;
+      html += `<div class="skill-row">${esc(line)}</div>`;
+    }
+  }
+
+  if (atsKeywords) {
+    html += `<div class="skill-row"><span class="skill-label">ATS Keywords:</span> ${esc(atsKeywords)}</div>`;
+  }
+
+  return html;
+}
+
+// ── Main PDF builder ───────────────────────────────────────────────────────
+
+function buildResumeHtml(text, filename) {
+  const rawLines = text.split("\n").map((l) => l.trim());
+
+  // ── 1. Extract header block (name + contact) ──
+  let i = 0;
+  while (i < rawLines.length && !rawLines[i]) i++;
+
+  const name = rawLines[i] || "";
+  i++;
+
+  const contactLines = [];
+  while (i < rawLines.length && rawLines[i] && !(SECTION_RE.test(rawLines[i]) && rawLines[i].length < 55)) {
+    contactLines.push(rawLines[i]);
+    i++;
+  }
+  while (i < rawLines.length && !rawLines[i]) i++;
+
+  // ── 2. Parse into sections ──
+  const sections = [];
+  let curSection = null;
+
+  while (i < rawLines.length) {
+    const line = rawLines[i];
+    if (SECTION_RE.test(line) && line.length < 55) {
+      curSection = { heading: line.toUpperCase(), lines: [] };
+      sections.push(curSection);
+    } else if (curSection) {
+      curSection.lines.push(line);
+    }
+    i++;
+  }
+
+  // ── 3. Render header ──
+  // Clean LinkedIn / GitHub labels, join as bullet-separated contact string
+  const contactParts = contactLines
+    .map((l) =>
+      l.replace(/^LinkedIn:\s*/i, "")
+       .replace(/^GitHub:\s*/i, "")
+       .replace(/\s*[—–]\s*/g, " • ")
+       .trim()
+    )
+    .filter(Boolean);
+
+  const contactHtml = contactParts
+    .map((p) => `<span class="contact-part">${esc(p)}</span>`)
+    .join('<span class="contact-sep"> • </span>');
+
+  let body = `
+    <div class="resume-header">
+      <div class="resume-name">${esc(name)}</div>
+      ${contactHtml ? `<div class="resume-contact">${contactHtml}</div>` : ""}
+    </div>`;
+
+  // ── 4. Render sections ──
+  for (const sec of sections) {
+    body += renderSection(sec.heading, sec.lines, text);
+  }
+
+  // ── 5. Wrap in HTML with print-friendly CSS ──
+  return `<!DOCTYPE html>
+<html lang="en">
 <head>
   <meta charset="UTF-8"/>
-  <title>${escapeHtml(filename.replace(".pdf", ""))}</title>
+  <title>${esc(name || "Resume")}</title>
   <style>
-    *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:Arial,Helvetica,sans-serif;font-size:11pt;color:#111;margin:40px 52px;line-height:1.55}
-    .heading{font-size:11pt;font-weight:bold;text-transform:uppercase;letter-spacing:.05em;
-      border-bottom:1.5px solid #222;padding-bottom:2px;margin-top:14px;margin-bottom:5px}
-    .bullet{margin-left:14px;margin-bottom:3px;font-size:10.5pt}
-    .line{margin-bottom:3px;font-size:10.5pt}
-    .gap{height:5px}
-    @media print{body{margin:30px 40px}}
+    /* ── Reset ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* ── Page ── */
+    body {
+      font-family: "Times New Roman", Times, serif;
+      font-size: 10.5pt;
+      color: #000;
+      background: #fff;
+      margin: 0.65in 0.7in;
+      line-height: 1.45;
+    }
+
+    /* ── Header ── */
+    .resume-header { text-align: center; margin-bottom: 10px; }
+    .resume-name {
+      font-size: 20pt;
+      font-weight: bold;
+      font-variant: small-caps;
+      letter-spacing: 0.04em;
+      margin-bottom: 3px;
+    }
+    .resume-contact { font-size: 9.5pt; color: #111; }
+    .contact-sep { color: #555; }
+
+    /* ── Section headings ── */
+    .section { margin-top: 12px; }
+    .sec-heading {
+      font-size: 10pt;
+      font-variant: small-caps;
+      font-weight: bold;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 1px;
+    }
+    .sec-rule {
+      border: none;
+      border-top: 1px solid #000;
+      margin-bottom: 5px;
+    }
+
+    /* ── Job / education rows ── */
+    .job-header {
+      display: table;
+      width: 100%;
+      margin-bottom: 1px;
+    }
+    .job-title {
+      display: table-cell;
+      font-weight: bold;
+      font-size: 10.5pt;
+      width: 55%;
+    }
+    .job-location {
+      display: table-cell;
+      text-align: center;
+      font-size: 10pt;
+      color: #222;
+      width: 20%;
+    }
+    .job-date {
+      display: table-cell;
+      text-align: right;
+      font-size: 10pt;
+      color: #222;
+      white-space: nowrap;
+      width: 25%;
+    }
+    .job-desc {
+      font-style: italic;
+      font-size: 10pt;
+      color: #333;
+      margin-bottom: 2px;
+    }
+    .edu-degree {
+      font-size: 10pt;
+      margin-bottom: 2px;
+      padding-left: 2px;
+    }
+    .job-gap { height: 7px; }
+
+    /* ── Bullets ── */
+    .dash-bullet {
+      font-size: 10pt;
+      margin-left: 14px;
+      margin-bottom: 2px;
+      line-height: 1.45;
+    }
+
+    /* ── Projects ── */
+    .project-name {
+      font-weight: bold;
+      font-size: 10.5pt;
+      margin-top: 4px;
+      margin-bottom: 1px;
+    }
+    .project-sub {
+      font-style: italic;
+      font-size: 10pt;
+      color: #333;
+      margin-bottom: 2px;
+    }
+    .utilized {
+      font-size: 9.5pt;
+      color: #222;
+      margin-left: 14px;
+      margin-top: 2px;
+      margin-bottom: 2px;
+    }
+    .utilized::before { content: ""; }
+
+    /* ── Skills ── */
+    .skill-row {
+      font-size: 10pt;
+      margin-bottom: 3px;
+    }
+    .skill-label {
+      font-weight: bold;
+      font-style: italic;
+    }
+
+    /* ── Misc ── */
+    .body-line { font-size: 10pt; margin-bottom: 2px; }
+
+    /* ── Print: suppress browser chrome (URL, date, title) ── */
+    @page {
+      margin: 0.65in 0.7in;
+    }
+    @media print {
+      html, body { background: #fff; }
+      body { margin: 0; }
+      header, footer { display: none !important; }
+      .section { page-break-inside: avoid; }
+      .job-header, .project-name { page-break-after: avoid; }
+    }
   </style>
 </head>
-<body>${body}</body>
+<body>
+${body}
+</body>
 </html>`;
+}
 
-  const win = window.open("", "_blank", "width=860,height=1060");
+// ── Public export ──────────────────────────────────────────────────────────
+
+export function downloadResumePdf(text = "", filename = "upgraded_resume.pdf") {
+  const html = buildResumeHtml(text, filename);
+  const win = window.open("", "_blank", "width=900,height=1100");
   if (!win) return;
   win.document.open();
   win.document.write(html);
   win.document.close();
   win.focus();
-
-  // After print dialog closes: close popup and restore parent focus so the page stays interactive
-  win.addEventListener("afterprint", () => {
-    win.close();
-    window.focus();
-  });
-
-  setTimeout(() => {
-    win.print();
-    // Fallback for browsers where afterprint doesn't fire reliably
-    setTimeout(() => window.focus(), 500);
-  }, 350);
+  win.addEventListener("afterprint", () => { win.close(); window.focus(); });
+  setTimeout(() => { win.print(); setTimeout(() => window.focus(), 500); }, 400);
 }
