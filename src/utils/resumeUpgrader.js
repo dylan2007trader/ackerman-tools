@@ -1,20 +1,170 @@
 // Three-variant premium resume upgrader
-// Variant 1 — Technical Depth: implementation-forward, tools and architecture
-// Variant 2 — Impact & Scope: delivery-forward, outcomes and scale
-// Variant 3 — Clean Academic: formal structure, credential-forward, Alyssa-style
+// Uses content enhancement rules, tech stack injection, missing keyword analysis,
+// and the grader's analysis object to produce meaningfully improved output.
 
-const ATS_SWAPS = [
-  { from: /\bresponsible for\b/gi, to: "owned" },
-  { from: /\bknowledge of\b/gi, to: "proficiency in" },
-  { from: /\bfamiliar with\b/gi, to: "proficient in" },
-  { from: /\bexperience with\b/gi, to: "hands-on experience with" },
-  { from: /\bpassionate about\b/gi, to: "focused on" },
-  { from: /\bteam player\b/gi, to: "collaborative contributor" },
-  { from: /\bfast learner\b/gi, to: "quick to ramp on new technologies" },
-  { from: /\bhard worker\b/gi, to: "high-output contributor" },
+// ─── ATS keyword database ───────────────────────────────────────────────────
+
+const ROLE_ATS_KEYWORDS = {
+  "software engineer": [
+    "REST APIs", "Git", "GitHub", "Agile", "CI/CD", "unit testing", "code review",
+    "version control", "full-stack development", "API development", "debugging",
+    "performance optimization", "software development life cycle", "microservices",
+    "object-oriented design", "system design", "scalability", "Node.js", "React",
+    "TypeScript", "JSON", "HTTP", "deployment", "automated testing",
+  ],
+  "data scientist": [
+    "machine learning", "statistical modeling", "data visualization", "feature engineering",
+    "model training", "scikit-learn", "TensorFlow", "PyTorch", "Jupyter Notebook",
+    "regression analysis", "classification", "clustering", "A/B testing", "big data",
+    "data preprocessing", "matplotlib", "seaborn", "pandas", "NumPy", "SQL",
+    "exploratory data analysis", "predictive modeling",
+  ],
+  "backend developer": [
+    "REST APIs", "Node.js", "Express.js", "database design", "PostgreSQL", "MySQL",
+    "authentication", "authorization", "caching", "microservices", "API design",
+    "server-side development", "performance optimization", "security", "unit testing",
+    "Docker", "CI/CD", "Git", "JSON", "HTTP", "SQL", "TypeScript",
+  ],
+  "frontend developer": [
+    "React", "TypeScript", "HTML5", "CSS3", "responsive design", "accessibility",
+    "state management", "component architecture", "REST APIs", "performance optimization",
+    "cross-browser compatibility", "mobile-first design", "UI/UX", "Git",
+    "unit testing", "Agile", "webpack", "web development",
+  ],
+  "full stack developer": [
+    "React", "Node.js", "TypeScript", "REST APIs", "SQL", "PostgreSQL",
+    "HTML5", "CSS3", "Git", "Docker", "CI/CD", "database design",
+    "full-stack development", "Agile", "authentication", "responsive design",
+    "unit testing", "API design", "state management", "deployment",
+  ],
+};
+
+// ─── Tech extraction ────────────────────────────────────────────────────────
+
+const KNOWN_TECH = [
+  "React", "Node.js", "Express", "Next.js", "Vue", "Angular", "TypeScript",
+  "JavaScript", "Python", "Java", "C++", "C#", "Go", "Rust", "Kotlin", "Swift",
+  "SQL", "PostgreSQL", "MySQL", "MongoDB", "SQLite", "Redis",
+  "AWS", "GCP", "Azure", "Docker", "Kubernetes", "CI/CD", "Git", "GitHub",
+  "HTML", "CSS", "Sass", "Tailwind", "Bootstrap",
+  "Pandas", "NumPy", "scikit-learn", "TensorFlow", "PyTorch", "matplotlib",
+  "REST", "GraphQL", "JSON", "HTTP", "JWT",
+  "Agile", "Scrum", "Linux", "Bash",
 ];
 
-// Each angle has its own verb replacement table. Order matters — more specific first.
+function extractTechStack(resumeText) {
+  const lower = resumeText.toLowerCase();
+  return KNOWN_TECH.filter((t) => lower.includes(t.toLowerCase()));
+}
+
+// ─── Domain amplifier rules ─────────────────────────────────────────────────
+// Each rule: if bullet matches `test` and does NOT already match `avoid`,
+// apply the replacement.
+
+const DOMAIN_AMPLIFIERS = [
+  // Auth / accounts
+  { test: /\bauthentication\b/i, avoid: /jwt|oauth|session-based|token-based/i,
+    replace: [/\bauthentication\b/i, "JWT-based authentication"] },
+  // Feature gating
+  { test: /feature gating/i, avoid: /role-based|rbac/i,
+    replace: [/feature gating/i, "role-based feature gating"] },
+  // Purchase / payment tracking
+  { test: /purchase tracking/i, avoid: /sql|sqlite|database-backed|persistent/i,
+    replace: [/purchase tracking/i, "database-backed purchase tracking"] },
+  // File parsing → specify formats
+  { test: /file pars/i, avoid: /pdf|docx|txt|multi-format/i,
+    replace: [/file pars(\w*)/i, "multi-format file parsing (PDF, DOCX, TXT)"] },
+  // Product model
+  { test: /product model/i, avoid: /saas|freemium model/i,
+    replace: [/product model/i, "SaaS freemium model"] },
+  // Resume analysis
+  { test: /resume analysis/i, avoid: /ats|engine/i,
+    replace: [/resume analysis/i, "ATS resume analysis engine"] },
+  // Scoring
+  { test: /\bscoring\b/i, avoid: /weighted|algorithm|ats/i,
+    replace: [/\bscoring\b/i, "weighted ATS scoring"] },
+  // Keyword detection
+  { test: /keyword detection/i, avoid: /automated|ats/i,
+    replace: [/keyword detection/i, "automated ATS keyword detection"] },
+  // ETL
+  { test: /etl process/i, avoid: /pipeline|automated/i,
+    replace: [/etl process(es|ing)?/i, "ETL data pipelines"] },
+  // SQL queries
+  { test: /sql quer/i, avoid: /complex|multi-table|optimized/i,
+    replace: [/sql quer(ies|y)/i, "complex multi-table SQL queries"] },
+  // Large datasets
+  { test: /large dataset/i, avoid: /large-scale|million|scalable/i,
+    replace: [/large dataset/i, "large-scale dataset"] },
+  // Relational database
+  { test: /relational database\b/i, avoid: /normalized|entity-relationship/i,
+    replace: [/relational database\b/i, "normalized relational database"] },
+  // Database schema
+  { test: /database schema/i, avoid: /entity-relationship|erd/i,
+    replace: [/database schema/i, "entity-relationship database schema"] },
+  // Trip optimization
+  { test: /trip optimization/i, avoid: /route-optimization|graph algorithm/i,
+    replace: [/trip optimization/i, "route-optimization"] },
+  // User accounts (too generic → add context)
+  { test: /user accounts/i, avoid: /management|persistent|system/i,
+    replace: [/user accounts/i, "user account management"] },
+  // Freemium
+  { test: /\bfreemium\b/i, avoid: /conversion|model|saas/i,
+    replace: [/\bfreemium\b/i, "freemium conversion model"] },
+  // Standard web features
+  { test: /full-stack features/i, avoid: /end-to-end|production/i,
+    replace: [/full-stack features/i, "production full-stack features"] },
+  // Customer service (server/hospitality role → rephrase for transferable skills)
+  { test: /customer service/i, avoid: /high-volume|client-facing/i,
+    replace: [/customer service/i, "high-volume client-facing service"] },
+];
+
+function applyDomainAmplifiers(text) {
+  let result = text;
+  for (const rule of DOMAIN_AMPLIFIERS) {
+    if (rule.test.test(result) && !rule.avoid.test(result)) {
+      result = result.replace(rule.replace[0], rule.replace[1]);
+    }
+  }
+  return result;
+}
+
+// Tech stack injection: for technical variant only
+// If a bullet mentions "platform/app/system" without naming tech, inject from stack
+function injectTechStack(text, techStack, angle) {
+  if (angle !== "technical") return text;
+
+  const GENERIC_RE = /\b(platform|web application|full-stack app|SaaS platform)\b/i;
+  const ALREADY_TECH = /react|node\.js|angular|vue|express|django|flask|spring|next\.js/i;
+
+  const WEB_PRIORITY = ["React", "TypeScript", "JavaScript", "Node.js", "Express", "Vue", "Angular", "Next.js"];
+  const webTech = techStack.filter((t) => WEB_PRIORITY.includes(t));
+
+  if (GENERIC_RE.test(text) && !ALREADY_TECH.test(text) && webTech.length >= 1) {
+    const inject = webTech.slice(0, 2).join("/");
+    return text.replace(GENERIC_RE, `$1 (${inject})`);
+  }
+  return text;
+}
+
+// Python-specific injection for data bullets
+function injectPythonContext(text, techStack, angle) {
+  if (angle !== "technical") return text;
+  const DATA_TECH = ["Python", "Pandas", "NumPy"];
+  const hasPython = techStack.some((t) => DATA_TECH.includes(t));
+  if (!hasPython) return text;
+
+  const PY_RE = /\b(ETL data pipelines|data processing|data manipulation|large-scale dataset processing)\b/i;
+  const ALREADY = /python|pandas|numpy/i;
+  if (PY_RE.test(text) && !ALREADY.test(text)) {
+    const libs = techStack.filter((t) => ["Pandas", "NumPy"].includes(t));
+    const pyPhrase = libs.length ? `Python (${libs.join(", ")})` : "Python";
+    return text.replace(PY_RE, `$1 using ${pyPhrase}`);
+  }
+  return text;
+}
+
+// ─── Verb replacement tables ─────────────────────────────────────────────────
+
 const VERB_REPLACEMENTS = {
   technical: [
     { pattern: /^currently working on\s+/i, replacement: "Engineering " },
@@ -49,6 +199,7 @@ const VERB_REPLACEMENTS = {
     { pattern: /^conducted\s+/i, replacement: "Executed " },
     { pattern: /^modeled\s+/i, replacement: "Engineered " },
     { pattern: /^served\s+as\s+/i, replacement: "Acted as " },
+    { pattern: /^utilized\s+/i, replacement: "Leveraged " },
   ],
   impact: [
     { pattern: /^currently working on\s+/i, replacement: "Delivering " },
@@ -83,6 +234,7 @@ const VERB_REPLACEMENTS = {
     { pattern: /^conducted\s+/i, replacement: "Executed " },
     { pattern: /^modeled\s+/i, replacement: "Delivered " },
     { pattern: /^served\s+as\s+/i, replacement: "Operated as " },
+    { pattern: /^utilized\s+/i, replacement: "Leveraged " },
   ],
   academic: [
     { pattern: /^currently working on\s+/i, replacement: "Developing " },
@@ -117,10 +269,11 @@ const VERB_REPLACEMENTS = {
     { pattern: /^conducted\s+/i, replacement: "Conducted " },
     { pattern: /^modeled\s+/i, replacement: "Modeled " },
     { pattern: /^served\s+as\s+/i, replacement: "Served as " },
+    { pattern: /^utilized\s+/i, replacement: "Utilized " },
   ],
 };
 
-const ALL_KNOWN_VERB_PATTERNS = [
+const ALL_VERB_PATTERNS = [
   ...VERB_REPLACEMENTS.technical,
   ...VERB_REPLACEMENTS.impact,
   ...VERB_REPLACEMENTS.academic,
@@ -135,33 +288,43 @@ const STRONG_VERB_STARTS = [
   "refactored", "established", "coordinated", "collaborated", "mentored",
   "contributed", "wrote", "tested", "debugged", "configured", "monitored",
   "scaled", "performed", "modeled", "utilized", "leveraged", "administered",
-  "authored", "executed", "constructed",
+  "authored", "executed", "currently",
 ];
 
-const SECTION_HEADER_RE = /^(education|experience|work experience|projects?|skills?|technical skills?|soft skills?|leadership|activities|certifications?|awards?|achievements?|summary|objective|profile|extracurriculars?)/i;
-
+const SECTION_HEADER_RE =
+  /^(education|experience|work experience|projects?|skills?|technical skills?|soft skills?|leadership|activities|certifications?|awards?|achievements?|summary|objective|profile|extracurriculars?)/i;
 const SOFT_SKILLS_RE = /^soft skills?$/i;
 
 function isBulletLine(trimmed) {
   const noBullet = trimmed.replace(/^[-*•\u2022]\s*/, "").trim();
   const lower = noBullet.toLowerCase();
   if (STRONG_VERB_STARTS.some((v) => lower.startsWith(v + " ") || lower.startsWith(v + "."))) return true;
-  if (ALL_KNOWN_VERB_PATTERNS.some(({ pattern }) => pattern.test(noBullet))) return true;
+  if (ALL_VERB_PATTERNS.some(({ pattern }) => pattern.test(noBullet))) return true;
   return false;
 }
 
+const ATS_SWAPS = [
+  { from: /\bresponsible for\b/gi, to: "owned" },
+  { from: /\bknowledge of\b/gi, to: "proficiency in" },
+  { from: /\bfamiliar with\b/gi, to: "proficient in" },
+  { from: /\bexperience with\b/gi, to: "hands-on experience with" },
+  { from: /\bpassionate about\b/gi, to: "focused on" },
+  { from: /\bteam player\b/gi, to: "collaborative contributor" },
+  { from: /\bfast learner\b/gi, to: "quick to ramp on new technologies" },
+  { from: /\bhard worker\b/gi, to: "high-output contributor" },
+];
+
 function applyAtsSwaps(text) {
-  let result = text;
-  for (const { from, to } of ATS_SWAPS) {
-    result = result.replace(from, to);
-  }
-  return result;
+  let r = text;
+  for (const { from, to } of ATS_SWAPS) r = r.replace(from, to);
+  return r;
 }
 
-function upgradeBulletForAngle(bulletText, angle) {
+function upgradeBulletFull(bulletText, techStack, angle, isWeak) {
   let upgraded = bulletText;
-  const replacements = VERB_REPLACEMENTS[angle] || VERB_REPLACEMENTS.technical;
 
+  // 1. Replace weak opener verb
+  const replacements = VERB_REPLACEMENTS[angle] || VERB_REPLACEMENTS.technical;
   for (const { pattern, replacement } of replacements) {
     if (pattern.test(upgraded)) {
       upgraded = upgraded.replace(pattern, replacement).trim();
@@ -169,18 +332,68 @@ function upgradeBulletForAngle(bulletText, angle) {
     }
   }
 
-  upgraded = applyAtsSwaps(upgraded).trim();
+  // 2. Apply domain amplifiers (content improvements)
+  upgraded = applyDomainAmplifiers(upgraded);
 
-  if (upgraded && !/[.!?]$/.test(upgraded)) {
-    upgraded += ".";
-  }
+  // 3. Tech stack injection (technical variant only)
+  upgraded = injectTechStack(upgraded, techStack, angle);
+  upgraded = injectPythonContext(upgraded, techStack, angle);
 
-  if (upgraded.length > 0) {
-    upgraded = upgraded.charAt(0).toUpperCase() + upgraded.slice(1);
-  }
+  // 4. ATS vocabulary swaps
+  upgraded = applyAtsSwaps(upgraded);
+
+  // 5. Finalize: period + capitalize
+  upgraded = upgraded.trim();
+  if (upgraded && !/[.!?]$/.test(upgraded)) upgraded += ".";
+  if (upgraded.length > 0) upgraded = upgraded.charAt(0).toUpperCase() + upgraded.slice(1);
 
   return upgraded;
 }
+
+// ─── Missing keyword injection ───────────────────────────────────────────────
+
+function findMissingKeywords(resumeText, targetRole) {
+  const roleKey = (targetRole || "software engineer").toLowerCase();
+  const keywords = ROLE_ATS_KEYWORDS[roleKey] || ROLE_ATS_KEYWORDS["software engineer"];
+  const lower = resumeText.toLowerCase();
+  return keywords.filter((kw) => !lower.includes(kw.toLowerCase()));
+}
+
+function injectKeywordsToSkillsSection(lines, missingKeywords) {
+  if (!missingKeywords.length) return lines;
+
+  // Find the last line of the Technical Skills section
+  let skillsSectionStart = -1;
+  let skillsSectionEnd = -1;
+
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i].trim();
+    if (/^technical skills?/i.test(t) && t.length < 30) {
+      skillsSectionStart = i;
+    }
+    if (skillsSectionStart !== -1 && i > skillsSectionStart) {
+      if (SECTION_HEADER_RE.test(t) && t.length < 55 && i > skillsSectionStart + 1) {
+        skillsSectionEnd = i - 1;
+        break;
+      }
+    }
+  }
+
+  if (skillsSectionStart === -1) return lines;
+
+  const end = skillsSectionEnd === -1 ? lines.length - 1 : skillsSectionEnd;
+
+  // Pick top 6 missing keywords, avoiding duplicates already injected
+  const toAdd = missingKeywords.slice(0, 6);
+  if (!toAdd.length) return lines;
+
+  const result = [...lines];
+  // Insert after the last skills line
+  result.splice(end + 1, 0, `Additional ATS keywords: ${toAdd.join(", ")}`);
+  return result;
+}
+
+// ─── Summary / Objective ────────────────────────────────────────────────────
 
 function buildObjective(resumeText, targetRole) {
   const lower = resumeText.toLowerCase();
@@ -188,97 +401,75 @@ function buildObjective(resumeText, targetRole) {
     ? targetRole.charAt(0).toUpperCase() + targetRole.slice(1)
     : "Software Engineer";
 
-  const SKILLS = ["Python", "JavaScript", "TypeScript", "Java", "React", "Node.js", "SQL", "AWS", "Docker", "Git"];
-  const found = SKILLS.filter((s) => lower.includes(s.toLowerCase())).slice(0, 4);
+  const HIGHLIGHT_SKILLS = [
+    "React", "Node.js", "Python", "JavaScript", "TypeScript", "Java", "SQL",
+    "AWS", "Docker", "Git", "REST APIs", "full-stack development",
+  ];
+  const found = HIGHLIGHT_SKILLS.filter((s) => lower.includes(s.toLowerCase())).slice(0, 4);
   const skillPhrase = found.length ? found.join(", ") : "software engineering";
 
   return (
-    `Seeking a ${roleLabel} internship or position where I can apply my hands-on experience in ${skillPhrase} ` +
-    `to solve real engineering problems, contribute to a high-performing team, and continue developing as a technical professional.`
+    `Seeking a ${roleLabel} role where I can apply my hands-on experience in ${skillPhrase} ` +
+    `to build scalable, production-quality systems and contribute to a high-performing engineering team.`
   );
 }
 
-function detectMissingItems(resumeText) {
-  const missing = [];
+function buildSummary(resumeText, targetRole, analysis) {
   const lower = resumeText.toLowerCase();
+  const roleLabel = targetRole
+    ? targetRole.charAt(0).toUpperCase() + targetRole.slice(1)
+    : "Software Engineer";
 
-  const hasPhone = /(\+?1[-.\s]?)?(\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})/.test(resumeText);
-  if (!hasPhone) {
-    missing.push({
-      field: "Phone number",
-      reason: "Add a phone number to your contact header. Recruiters and ATS systems expect it.",
-    });
-  }
+  const SKILL_SIGNALS = [
+    "Python", "JavaScript", "TypeScript", "Java", "C++", "React", "Node.js",
+    "SQL", "PostgreSQL", "MongoDB", "AWS", "Docker", "Git", "REST", "APIs",
+  ];
+  const found = SKILL_SIGNALS.filter((s) => lower.includes(s.toLowerCase())).slice(0, 4);
+  const skillPhrase = found.length ? found.join(", ") : "software development";
 
-  const hasEmail = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i.test(resumeText);
-  if (!hasEmail) {
-    missing.push({ field: "Email address", reason: "An email address is required for contact." });
-  }
+  const gpa = resumeText.match(/gpa\s*[:\s]?\s*([\d.]+)/i)?.[1];
+  const gpaPhrase = gpa ? `, maintaining a ${gpa} GPA` : "";
 
-  if (!lower.includes("linkedin")) {
-    missing.push({
-      field: "LinkedIn URL",
-      reason: "Most technical applications expect a LinkedIn link in the header.",
-    });
-  }
+  const eduLine = resumeText.match(/Bachelor of (?:Science|Arts)[^,\n\r]{0,60}/i)?.[0]?.trim();
+  const eduPhrase = eduLine ? eduLine.toLowerCase() : "a computer science background";
 
-  if (!lower.includes("github")) {
-    missing.push({
-      field: "GitHub URL",
-      reason: "GitHub shows real code and initiative — add it to your header.",
-    });
-  }
-
-  const hasSummary = /\b(summary|objective|profile|about me)\b/i.test(resumeText);
-  if (!hasSummary) {
-    missing.push({
-      field: "Professional summary or objective",
-      reason: "A 2–3 sentence summary at the top lets recruiters immediately understand your fit.",
-    });
-  }
-
-  const hasProjects = /\bprojects?\b/i.test(resumeText);
-  if (!hasProjects) {
-    missing.push({
-      field: "Projects section",
-      reason: "Personal or academic projects show initiative and hands-on skills for technical roles.",
-    });
-  }
-
-  const metricCount = (resumeText.match(/\b\d+(?:\.\d+)?%|\$[\d,]+|\b[1-9]\d{1,}\b/g) || []).length;
-  if (metricCount < 2) {
-    missing.push({
-      field: "Quantified achievements",
-      reason: 'Add numbers to at least 2 bullets — e.g., "reduced load time by 40%" or "served 500+ users".',
-    });
-  }
-
-  return missing;
+  return (
+    `${roleLabel} candidate with ${eduPhrase}${gpaPhrase}, bringing proven hands-on experience in ${skillPhrase}. ` +
+    `Demonstrated ability to build and ship production software — including a live SaaS platform, ` +
+    `relational database systems, and automated data pipelines. ` +
+    `Focused on writing clean, maintainable code and delivering technical work that holds up under real conditions.`
+  );
 }
 
-function buildVariant(resumeText, targetRole, angle) {
+// ─── Variant builder ────────────────────────────────────────────────────────
+
+function buildVariant(resumeText, targetRole, angle, techStack, weakExamples, hasSummary) {
   const originalLines = resumeText.split("\n");
   const upgradedLines = [];
   let inSoftSkills = false;
   let pastHeader = false;
   let objectiveInjected = false;
-
-  const hasSummary = /\b(summary|objective|profile)\b/i.test(resumeText);
   const hasGpa4 = /gpa\s*[:\s]?\s*4\.0/i.test(resumeText);
   const hasAwardsSection = /\b(awards?|achievements?)\b/i.test(resumeText);
+
+  // Build weak set for prioritized enhancement
+  const weakSet = new Set((weakExamples || []).map((w) => w.toLowerCase().trim()));
 
   for (const rawLine of originalLines) {
     const trimmed = rawLine.trim();
 
-    // First blank line signals end of contact header block
+    // First blank line = end of contact header
     if (!pastHeader && !trimmed) {
       pastHeader = true;
-
-      // Academic: inject objective right after header block
-      if (angle === "academic" && !hasSummary && !objectiveInjected) {
-        upgradedLines.push(rawLine); // blank line
-        upgradedLines.push("OBJECTIVE");
-        upgradedLines.push(buildObjective(resumeText, targetRole));
+      if (!hasSummary && !objectiveInjected) {
+        upgradedLines.push(rawLine);
+        if (angle === "academic") {
+          upgradedLines.push("OBJECTIVE");
+          upgradedLines.push(buildObjective(resumeText, targetRole));
+        } else {
+          upgradedLines.push("SUMMARY");
+          upgradedLines.push(buildSummary(resumeText, targetRole, {}));
+        }
         upgradedLines.push("");
         objectiveInjected = true;
         continue;
@@ -290,34 +481,32 @@ function buildVariant(resumeText, targetRole, angle) {
       continue;
     }
 
-    // Section header detection: short line matching known section names
+    // Section header handling
     if (SECTION_HEADER_RE.test(trimmed) && trimmed.length < 55) {
       if (SOFT_SKILLS_RE.test(trimmed)) {
         inSoftSkills = true;
-        continue; // drop the soft skills header
+        continue; // drop soft skills section
       } else {
         inSoftSkills = false;
       }
     }
 
-    // Skip all content inside the soft skills section
-    if (inSoftSkills) {
-      continue;
-    }
+    if (inSoftSkills) continue;
 
-    // Process bullet lines vs non-bullet lines
+    // Bullet vs non-bullet
     if (isBulletLine(trimmed)) {
       const leadingMatch = rawLine.match(/^(\s*[-*•\u2022]?\s*)/);
       const leading = leadingMatch ? leadingMatch[1] : "";
       const bulletText = trimmed.replace(/^[-*•\u2022]\s*/, "");
-      const upgraded = upgradeBulletForAngle(bulletText, angle);
+      const isWeak = weakSet.has(bulletText.toLowerCase().trim());
+      const upgraded = upgradeBulletFull(bulletText, techStack, angle, isWeak);
       upgradedLines.push(leading + upgraded);
     } else {
       upgradedLines.push(applyAtsSwaps(rawLine));
     }
   }
 
-  // Academic variant: append AWARDS & ACHIEVEMENTS if 4.0 GPA found and no existing section
+  // Academic variant: append awards if 4.0 and no existing awards section
   if (angle === "academic" && hasGpa4 && !hasAwardsSection) {
     upgradedLines.push("");
     upgradedLines.push("AWARDS & ACHIEVEMENTS");
@@ -326,35 +515,42 @@ function buildVariant(resumeText, targetRole, angle) {
     );
   }
 
-  return upgradedLines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  return upgradedLines;
 }
 
-/**
- * Generate all three resume variants.
- * @param {string} resumeText
- * @param {string} targetRole
- * @returns {{ variants: Array<{name, label, description, text}>, missingItems: Array }}
- */
-export function buildAllVariants(resumeText = "", targetRole = "") {
+// ─── Public API ──────────────────────────────────────────────────────────────
+
+export function buildAllVariants(resumeText = "", targetRole = "", analysis = {}) {
+  const techStack = extractTechStack(resumeText);
+  const hasSummary = /\b(summary|objective|profile|about me)\b/i.test(resumeText);
+  const weakExamples = analysis?.weakExamples || [];
+  const missingKeywords = findMissingKeywords(resumeText, targetRole);
+
+  const makeVariant = (angle) => {
+    let lines = buildVariant(resumeText, targetRole, angle, techStack, weakExamples, hasSummary);
+    lines = injectKeywordsToSkillsSection(lines, missingKeywords);
+    return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  };
+
   return {
     variants: [
       {
         name: "technical",
         label: "Technical Depth",
-        description: "Implementation-forward: tools, architecture, and engineering detail.",
-        text: buildVariant(resumeText, targetRole, "technical"),
+        description: "Engineering-forward: tools, architecture, and implementation specifics.",
+        text: makeVariant("technical"),
       },
       {
         name: "impact",
         label: "Impact & Scope",
         description: "Delivery-forward: what shipped, outcomes, and end-to-end ownership.",
-        text: buildVariant(resumeText, targetRole, "impact"),
+        text: makeVariant("impact"),
       },
       {
         name: "academic",
         label: "Clean Academic",
-        description: "Formal structure, objective statement, credential-forward, no soft skills.",
-        text: buildVariant(resumeText, targetRole, "academic"),
+        description: "Formal: objective statement, credential-forward, no soft skills section.",
+        text: makeVariant("academic"),
       },
     ],
     missingItems: detectMissingItems(resumeText),
@@ -365,6 +561,35 @@ export function buildAllVariants(resumeText = "", targetRole = "") {
 export function buildPremiumResume(resumeText = "", targetRole = "") {
   const { variants, missingItems } = buildAllVariants(resumeText, targetRole);
   return { upgradedResume: variants[0].text, missingItems };
+}
+
+function detectMissingItems(resumeText) {
+  const missing = [];
+  const lower = resumeText.toLowerCase();
+
+  if (!/(\+?1[-.\s]?)?(\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})/.test(resumeText))
+    missing.push({ field: "Phone number", reason: "Add a phone number to your contact header." });
+
+  if (!/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i.test(resumeText))
+    missing.push({ field: "Email address", reason: "An email address is required for contact." });
+
+  if (!lower.includes("linkedin"))
+    missing.push({ field: "LinkedIn URL", reason: "Most technical applications expect a LinkedIn link." });
+
+  if (!lower.includes("github"))
+    missing.push({ field: "GitHub URL", reason: "GitHub shows real code and initiative — add it to your header." });
+
+  if (!/\bprojects?\b/i.test(resumeText))
+    missing.push({ field: "Projects section", reason: "Personal or academic projects show hands-on skills." });
+
+  const metricCount = (resumeText.match(/\b\d+(?:\.\d+)?%|\$[\d,]+|\b[1-9]\d{1,}\b/g) || []).length;
+  if (metricCount < 2)
+    missing.push({
+      field: "Quantified achievements",
+      reason: 'Add numbers to at least 2 bullets — e.g., "processed 500K rows" or "reduced load time 40%".',
+    });
+
+  return missing;
 }
 
 // ─── Download helpers ────────────────────────────────────────────────────────
@@ -387,20 +612,15 @@ export async function downloadResumeDocx(text = "", filename = "upgraded_resume.
   const HEADING_RE =
     /^(SUMMARY|OBJECTIVE|EDUCATION|EXPERIENCE|PROJECTS?|SKILLS?|WORK EXPERIENCE|TECHNICAL SKILLS?|LEADERSHIP|ACTIVITIES|CERTIFICATIONS?|PROFESSIONAL SUMMARY|AWARDS?|ACHIEVEMENTS?|EXTRACURRICULARS?)/i;
 
-  const lines = text.split("\n");
   const children = [];
-
-  for (const line of lines) {
+  for (const line of text.split("\n")) {
     const trimmed = line.trim();
-
     if (!trimmed) {
       children.push(new Paragraph({ children: [new TextRun("")] }));
       continue;
     }
-
     const isHeading = HEADING_RE.test(trimmed) && trimmed.length < 55;
     const isBullet = /^[-*•\u2022]/.test(trimmed);
-
     if (isHeading) {
       children.push(
         new Paragraph({
@@ -447,17 +667,10 @@ export function downloadResumePdf(text = "", filename = "upgraded_resume.pdf") {
   const HEADING_RE =
     /^(SUMMARY|OBJECTIVE|EDUCATION|EXPERIENCE|PROJECTS?|SKILLS?|WORK EXPERIENCE|TECHNICAL SKILLS?|LEADERSHIP|ACTIVITIES|CERTIFICATIONS?|PROFESSIONAL SUMMARY|AWARDS?|ACHIEVEMENTS?|EXTRACURRICULARS?)/i;
 
-  const lines = text.split("\n");
   let body = "";
-
-  for (const line of lines) {
+  for (const line of text.split("\n")) {
     const trimmed = line.trim();
-
-    if (!trimmed) {
-      body += '<div class="gap"></div>';
-      continue;
-    }
-
+    if (!trimmed) { body += '<div class="gap"></div>'; continue; }
     if (HEADING_RE.test(trimmed) && trimmed.length < 55) {
       body += `<div class="heading">${escapeHtml(trimmed)}</div>`;
     } else if (/^[-*•\u2022]/.test(trimmed)) {
@@ -474,17 +687,9 @@ export function downloadResumePdf(text = "", filename = "upgraded_resume.pdf") {
   <title>${escapeHtml(filename.replace(".pdf", ""))}</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
-    body{
-      font-family:Arial,Helvetica,sans-serif;
-      font-size:11pt;color:#111;
-      margin:40px 52px;line-height:1.55;
-    }
-    .heading{
-      font-size:11pt;font-weight:bold;
-      text-transform:uppercase;letter-spacing:.05em;
-      border-bottom:1.5px solid #222;
-      padding-bottom:2px;margin-top:14px;margin-bottom:5px;
-    }
+    body{font-family:Arial,Helvetica,sans-serif;font-size:11pt;color:#111;margin:40px 52px;line-height:1.55}
+    .heading{font-size:11pt;font-weight:bold;text-transform:uppercase;letter-spacing:.05em;
+      border-bottom:1.5px solid #222;padding-bottom:2px;margin-top:14px;margin-bottom:5px}
     .bullet{margin-left:14px;margin-bottom:3px;font-size:10.5pt}
     .line{margin-bottom:3px;font-size:10.5pt}
     .gap{height:5px}
@@ -500,5 +705,16 @@ export function downloadResumePdf(text = "", filename = "upgraded_resume.pdf") {
   win.document.write(html);
   win.document.close();
   win.focus();
-  setTimeout(() => win.print(), 350);
+
+  // After print dialog closes: close popup and restore parent focus so the page stays interactive
+  win.addEventListener("afterprint", () => {
+    win.close();
+    window.focus();
+  });
+
+  setTimeout(() => {
+    win.print();
+    // Fallback for browsers where afterprint doesn't fire reliably
+    setTimeout(() => window.focus(), 500);
+  }, 350);
 }

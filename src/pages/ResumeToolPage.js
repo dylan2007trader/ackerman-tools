@@ -220,7 +220,7 @@ export default function ResumeToolPage() {
     setIsGeneratingResume(true);
     setError("");
     try {
-      const { variants, missingItems: missing } = buildAllVariants(resumeText, role);
+      const { variants, missingItems: missing } = buildAllVariants(resumeText, role, analysis || {});
       setGeneratedVariants(variants);
       setActiveVariant(0);
       setMissingItems(missing);
