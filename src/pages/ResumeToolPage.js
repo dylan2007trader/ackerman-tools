@@ -9,7 +9,7 @@ import PremiumUpsell from "../components/resume/PremiumUpsell";
 import AuthModal from "../components/auth/AuthModal";
 
 import { analyzeResume } from "../utils/resumeAnalyzer";
-import { buildPremiumResume, downloadResumeText, downloadResumeDocx } from "../utils/resumeUpgrader";
+import { buildAllVariants, downloadResumeText, downloadResumeDocx, downloadResumePdf } from "../utils/resumeUpgrader";
 import {
   buildCoverLetter,
   buildCoverLetterText,
@@ -141,7 +141,8 @@ export default function ResumeToolPage() {
 
   // Premium output state
   const [premiumTab, setPremiumTab] = useState("resume");
-  const [generatedResume, setGeneratedResume] = useState("");
+  const [generatedVariants, setGeneratedVariants] = useState([]);
+  const [activeVariant, setActiveVariant] = useState(0);
   const [missingItems, setMissingItems] = useState([]);
   const [isGeneratingResume, setIsGeneratingResume] = useState(false);
   const [generatedCoverLetter, setGeneratedCoverLetter] = useState(null);
@@ -219,12 +220,9 @@ export default function ResumeToolPage() {
     setIsGeneratingResume(true);
     setError("");
     try {
-      const { upgradedResume, missingItems: missing } = buildPremiumResume(
-        resumeText,
-        role,
-        analysis || {}
-      );
-      setGeneratedResume(upgradedResume);
+      const { variants, missingItems: missing } = buildAllVariants(resumeText, role);
+      setGeneratedVariants(variants);
+      setActiveVariant(0);
       setMissingItems(missing);
       setPremiumTab("resume");
     } catch (err) {
@@ -280,9 +278,11 @@ export default function ResumeToolPage() {
   }
 
   async function handleDownloadResumeDocx() {
-    if (!generatedResume) return;
+    const text = generatedVariants[activeVariant]?.text;
+    if (!text) return;
+    const label = generatedVariants[activeVariant]?.name || "resume";
     try {
-      await downloadResumeDocx(generatedResume, "upgraded_resume.docx");
+      await downloadResumeDocx(text, `upgraded_resume_${label}.docx`);
     } catch (err) {
       setError("DOCX download failed. Try the text download instead.");
       console.error(err);
@@ -816,7 +816,7 @@ export default function ResumeToolPage() {
           </div>
 
           {/* Tab switcher and output area */}
-          {(generatedResume || generatedCoverLetter) && (
+          {(generatedVariants.length > 0 || generatedCoverLetter) && (
             <div style={styles.premiumOutputSection}>
               <div style={styles.tabRow}>
                 <button
@@ -836,40 +836,69 @@ export default function ResumeToolPage() {
               </div>
 
               {/* Resume output */}
-              {premiumTab === "resume" && (
+              {premiumTab === "resume" && generatedVariants.length > 0 && (
                 <div style={styles.outputCard}>
                   <div style={styles.outputCardHeader}>
                     <div>
-                      <div style={styles.eyebrowSmall}>upgraded resume</div>
-                      <h3 style={styles.sectionTitle}>ATS-optimized version</h3>
+                      <div style={styles.eyebrowSmall}>upgraded resume — 3 variants</div>
+                      <h3 style={styles.sectionTitle}>Choose the version that fits best</h3>
                       <p style={styles.outputMeta}>
-                        Improved bullet language, stronger action verbs, and ATS vocabulary.
-                        Your original structure and style are preserved.
+                        Each variant rewrites your bullets with a different angle. Pick the one that feels right for the job.
                       </p>
                     </div>
-                    <div style={styles.outputButtons}>
+                  </div>
+
+                  {/* Variant selector tabs */}
+                  <div style={styles.variantTabRow}>
+                    {generatedVariants.map((v, i) => (
                       <button
+                        key={v.name}
                         type="button"
-                        style={styles.smallActionButton}
-                        onClick={() => handleCopy(generatedResume)}
+                        style={activeVariant === i ? styles.variantTabActive : styles.variantTab}
+                        onClick={() => setActiveVariant(i)}
                       >
-                        Copy
+                        <span style={styles.variantTabLabel}>{v.label}</span>
+                        <span style={styles.variantTabDesc}>{v.description}</span>
                       </button>
-                      <button
-                        type="button"
-                        style={styles.smallActionButton}
-                        onClick={() => downloadResumeText(generatedResume, "upgraded_resume.txt")}
-                      >
-                        Download TXT
-                      </button>
-                      <button
-                        type="button"
-                        style={styles.smallActionButton}
-                        onClick={handleDownloadResumeDocx}
-                      >
-                        Download DOCX
-                      </button>
-                    </div>
+                    ))}
+                  </div>
+
+                  {/* Download buttons for active variant */}
+                  <div style={styles.outputButtons}>
+                    <button
+                      type="button"
+                      style={styles.smallActionButton}
+                      onClick={() => handleCopy(generatedVariants[activeVariant]?.text || "")}
+                    >
+                      Copy
+                    </button>
+                    <button
+                      type="button"
+                      style={styles.smallActionButton}
+                      onClick={() => downloadResumeText(
+                        generatedVariants[activeVariant]?.text || "",
+                        `upgraded_resume_${generatedVariants[activeVariant]?.name || "v1"}.txt`
+                      )}
+                    >
+                      Download TXT
+                    </button>
+                    <button
+                      type="button"
+                      style={styles.smallActionButton}
+                      onClick={handleDownloadResumeDocx}
+                    >
+                      Download DOCX
+                    </button>
+                    <button
+                      type="button"
+                      style={styles.smallActionButton}
+                      onClick={() => downloadResumePdf(
+                        generatedVariants[activeVariant]?.text || "",
+                        `upgraded_resume_${generatedVariants[activeVariant]?.name || "v1"}.pdf`
+                      )}
+                    >
+                      Download PDF
+                    </button>
                   </div>
 
                   {missingItems.length > 0 && (
@@ -886,7 +915,7 @@ export default function ResumeToolPage() {
                     </div>
                   )}
 
-                  <pre style={styles.outputPreview}>{generatedResume}</pre>
+                  <pre style={styles.outputPreview}>{generatedVariants[activeVariant]?.text}</pre>
                 </div>
               )}
 
@@ -1578,6 +1607,50 @@ const styles = {
     cursor: "pointer",
     background: "rgba(99,102,241,0.14)",
     color: "#c7d2fe",
+  },
+  variantTabRow: {
+    display: "flex",
+    gap: "10px",
+    flexWrap: "wrap",
+    marginBottom: "16px",
+  },
+  variantTab: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: "3px",
+    border: "1px solid rgba(148,163,184,0.18)",
+    borderRadius: "12px",
+    padding: "10px 16px",
+    cursor: "pointer",
+    background: "transparent",
+    flex: 1,
+    minWidth: "140px",
+    textAlign: "left",
+  },
+  variantTabActive: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: "3px",
+    border: "1px solid rgba(99,102,241,0.5)",
+    borderRadius: "12px",
+    padding: "10px 16px",
+    cursor: "pointer",
+    background: "rgba(99,102,241,0.14)",
+    flex: 1,
+    minWidth: "140px",
+    textAlign: "left",
+  },
+  variantTabLabel: {
+    fontSize: "13px",
+    fontWeight: 700,
+    color: "#e2e8f0",
+  },
+  variantTabDesc: {
+    fontSize: "11px",
+    color: "#64748b",
+    lineHeight: 1.4,
   },
   outputCard: {
     borderRadius: "22px",
