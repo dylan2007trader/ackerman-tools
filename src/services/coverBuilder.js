@@ -1,5 +1,6 @@
 // Cover letter builder
-// All three paragraphs are built directly from the job description and resume text.
+// Parsing is blob-tolerant: works whether resume text has newlines (DOCX/TXT)
+// or is a space-joined blob (PDF via pdfjs-dist).
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -11,15 +12,8 @@ function normalize(text = "") {
     .trim();
 }
 
-function lines(text = "") {
-  return normalize(text)
-    .split("\n")
-    .map((l) => l.trim().replace(/^[-*•\u2022]\s*/, "").trim())
-    .filter(Boolean);
-}
-
 function sentence(text = "") {
-  const s = normalize(text);
+  const s = normalize(text).trim();
   if (!s) return "";
   const capped = s.charAt(0).toUpperCase() + s.slice(1);
   return /[.!?]$/.test(capped) ? capped : capped + ".";
@@ -33,98 +27,124 @@ function listPhrase(items = []) {
   return `${u.slice(0, -1).join(", ")}, and ${u[u.length - 1]}`;
 }
 
+/**
+ * Split text into meaningful segments.
+ * Works whether the text has newlines (DOCX/TXT) or is a space-joined PDF blob.
+ */
+function splitIntoSegments(text = "") {
+  const norm = normalize(text);
+  const byNewline = norm.split("\n").map((s) => s.trim()).filter(Boolean);
+  // If we have proper line structure, use it
+  if (byNewline.length > 4) return byNewline;
+  // Fall back to sentence splitting for PDF blobs
+  return norm
+    .split(/(?<=[.!?])\s+(?=[A-Z"'])/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 8);
+}
+
 // ─── Job description parsing ─────────────────────────────────────────────────
 
-function extractJobTitle(jobDesc = "", fallback = "") {
+function extractJobTitleFromDesc(jobDesc = "", fallback = "") {
   if (fallback) return fallback.charAt(0).toUpperCase() + fallback.slice(1);
 
-  const allLines = lines(jobDesc);
-  // First short line that looks like a job title
-  const candidate = allLines.find((l) => {
+  const segs = splitIntoSegments(jobDesc);
+  const candidate = segs.find((l) => {
     if (l.length > 90 || l.length < 4) return false;
     return /engineer|developer|analyst|scientist|intern|designer|manager|lead|architect|specialist/i.test(l);
   });
 
-  return candidate ? candidate.replace(/^(job title|position|role)\s*[:\-]\s*/i, "").trim() : "this role";
+  return candidate
+    ? candidate.replace(/^(job title|position|role)\s*[:\-]\s*/i, "").trim()
+    : "this role";
 }
 
-function extractCompanyName(jobDesc = "") {
-  const allLines = lines(jobDesc);
+function extractCompanyNameFromDesc(jobDesc = "") {
+  const norm = normalize(jobDesc);
 
-  // "Company: Acme" or "at Acme" or "join Acme"
-  const labeled = allLines.find((l) => /^company\s*[:\-]/i.test(l));
-  if (labeled) return labeled.replace(/^company\s*[:\-]\s*/i, "").trim();
+  // "Company: Acme" labeled
+  const labelMatch = norm.match(/\bcompany\s*[:\-]\s*([A-Z][A-Za-z0-9&.,\s]{2,40}?)(?:\n|,|\s{2}|$)/);
+  if (labelMatch?.[1]) return labelMatch[1].trim().replace(/[,.]$/, "");
 
-  const atMatch = normalize(jobDesc).match(/\b(?:at|join|joining|with)\s+([A-Z][A-Za-z0-9&., ]{2,40}?)(?:\.|,|\s+to\s|\s+and\s|$)/);
-  if (atMatch?.[1]) return atMatch[1].trim().replace(/[,.]$/, "");
+  // "at Acme" / "join Acme"
+  const atMatch = norm.match(
+    /\b(?:at|join|joining|with)\s+([A-Z][A-Za-z0-9&. ]{2,35}?)(?:\.|,|\s{2}|\s+to\s|\s+and\s|$)/
+  );
+  if (atMatch?.[1]) {
+    const candidate = atMatch[1].trim().replace(/[,.]$/, "");
+    // Reject generic tech terms and common words that aren't company names
+    const TECH_NOISE =
+      /^(the|a|an|our|your|rest|api|apis|sql|git|aws|docker|agile|linux|python|java|react|node|angular|vue|typescript|javascript|html|css|cloud|data|software|systems?|services?|platforms?|solutions?|applications?|tools?|code|project|team|company|organization|role|position|us|you|they|we)\b/i;
+    if (!TECH_NOISE.test(candidate) && candidate.length > 2) return candidate;
+  }
 
   return "";
 }
 
-/**
- * Pull the most meaningful requirement sentences from the job description.
- * Looks for lines that describe what the candidate will do or must have.
- */
 function extractRequirements(jobDesc = "") {
   if (!jobDesc.trim()) return [];
 
-  const allLines = lines(jobDesc);
+  const segs = splitIntoSegments(jobDesc);
 
-  const SKIP = /benefits|equal opportunity|salary|compensation|perks|pto|vacation|insurance|disability|401k|eeo|applicants will|we are an|about us|our mission|our culture/i;
-  const WANT = /you will|you'll|responsible for|build|develop|design|support|create|maintain|implement|collaborate|work with|analyze|deliver|own|lead|manage|write|test|improve|architect|deploy|optimize/i;
+  const SKIP =
+    /benefits|equal opportunity|salary|compensation|perks|pto|vacation|insurance|disability|401k|eeo|applicants will|we are an|about us|our mission|our culture/i;
+  const WANT =
+    /you will|you'll|responsible for|build|develop|design|support|create|maintain|implement|collaborate|work with|analyze|deliver|own|lead|manage|write|test|improve|architect|deploy|optimize/i;
+  const QUAL =
+    /required|must have|minimum|strong|proficient|experience (in|with)|knowledge of|familiar with|background in|\d\+\s*years/i;
 
-  const requirement = allLines.filter((l) => {
+  const requirement = segs.filter((l) => {
     if (l.length < 20 || l.length > 220) return false;
     if (SKIP.test(l)) return false;
     return WANT.test(l);
   });
 
-  // Also grab "required" / "must have" qualifications
-  const qualifications = allLines.filter((l) => {
+  const qualifications = segs.filter((l) => {
     if (l.length < 15 || l.length > 180) return false;
     if (SKIP.test(l)) return false;
-    return /required|must have|minimum|strong|proficient|experience (in|with)|knowledge of|familiar with|background in|\d\+\s*years/i.test(l);
+    return QUAL.test(l);
   });
 
   return [...new Set([...requirement, ...qualifications])].slice(0, 6);
 }
 
-/**
- * Extract a short phrase describing what the role focuses on.
- * Used in paragraph 1 opening.
- */
-function extractRoleFocus(jobDesc = "") {
-  const reqs = extractRequirements(jobDesc);
-  if (!reqs.length) return "";
-
-  // Take the first clean short requirement and trim it into a phrase
-  const first = reqs[0];
-  return first
-    .replace(/^you will\s+/i, "")
-    .replace(/^you'll\s+/i, "")
-    .replace(/^responsible for\s+/i, "")
-    .replace(/[.!?]+$/, "")
-    .trim()
-    .toLowerCase();
-}
-
 // ─── Resume parsing ──────────────────────────────────────────────────────────
 
+/**
+ * Extract candidate name from text.
+ * Looks for 2-3 consecutive Title Case words at the very start of the text.
+ * Works on both newline-structured text and PDF blobs.
+ */
+function extractNameFromText(resumeText = "") {
+  const text = resumeText.trim();
+  // First 2–3 consecutive Title Case words at the start (ignore section headers)
+  const match = text.match(/^([A-Z][a-z]+(?:\s[A-Z][a-z]+){1,2})/);
+  if (match) {
+    const candidate = match[1].trim();
+    if (
+      !/^(education|experience|skills?|projects?|summary|objective|profile|work|leadership|certifications?|activities|contact)/i.test(
+        candidate
+      )
+    ) {
+      return candidate;
+    }
+  }
+  return "";
+}
+
 function extractContact(resumeText = "") {
-  const headerLines = lines(resumeText).slice(0, 7);
-  const full = headerLines.join(" ");
+  const text = normalize(resumeText);
 
-  const name =
-    headerLines.find((l) => {
-      if (l.length < 4 || l.length > 44) return false;
-      if (/\d|@|linkedin|github|http/i.test(l)) return false;
-      return /^[A-Za-z .'-]+$/.test(l);
-    }) || "Applicant";
+  const name = extractNameFromText(resumeText) || "Applicant";
+  const email = text.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i)?.[0] || "";
+  const phone = text.match(/(\+?1[-.\s]?)?(\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})/)?.[0] || "";
 
-  const email = full.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i)?.[0] || "";
-  const phone = full.match(/(\+?1[-.\s]?)?(\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})/)?.[0] || "";
-  const location = headerLines.find((l) => /,\s*[A-Z]{2}\b/.test(l) || /remote/i.test(l)) || "";
-  const linkedIn = headerLines.find((l) => /linkedin\.com/i.test(l)) || "";
+  // City, ST pattern (avoid false positives by requiring comma + 2-letter state code)
+  const locationMatch = text.match(/([A-Z][a-zA-Z ]{1,20},\s*[A-Z]{2})\b/);
+  const location = locationMatch?.[1]?.trim() || "";
+
+  const linkedInMatch = text.match(/linkedin\.com\/in\/[A-Za-z0-9_-]+/i);
+  const linkedIn = linkedInMatch ? linkedInMatch[0] : "";
 
   return {
     name: name.charAt(0).toUpperCase() + name.slice(1),
@@ -137,34 +157,70 @@ function extractContact(resumeText = "") {
 }
 
 function extractEducation(resumeText = "") {
-  const allLines = lines(resumeText);
-  const edu = allLines.find((l) =>
-    /university|college|bachelor|master|degree|b\.s\.|b\.a\.|gpa/i.test(l)
-  );
-  if (!edu) return "a computer science background";
-  return edu
-    .replace(/education/i, "")
-    .replace(/gpa[^,.;]*/gi, "")
-    .replace(/\s{2,}/g, " ")
-    .trim()
-    .toLowerCase();
+  const text = normalize(resumeText);
+
+  // Specific degree patterns — match only the degree phrase, not the whole blob
+  const degreeMatch =
+    text.match(/Bachelor of (?:Science|Arts|Engineering|Applied Science)[^,•\n\r]{0,80}/i) ||
+    text.match(/Master of (?:Science|Arts|Engineering|Business)[^,•\n\r]{0,80}/i) ||
+    text.match(/B\.S\.?\s+(?:in\s+)?[A-Z][A-Za-z &]{4,50}/i) ||
+    text.match(/B\.A\.?\s+(?:in\s+)?[A-Z][A-Za-z &]{4,50}/i) ||
+    text.match(/Associate(?:'s)? (?:of|in) [A-Z][A-Za-z &]{4,50}/i);
+
+  if (degreeMatch) {
+    return degreeMatch[0]
+      .replace(/gpa[^,.;\n]*/gi, "")
+      .replace(/\s{2,}/g, " ")
+      .trim()
+      .toLowerCase();
+  }
+
+  // University name fallback
+  const uniMatch =
+    text.match(/University of [A-Z][a-zA-Z\s]{3,30}/i) ||
+    text.match(/[A-Z][a-zA-Z\s]{2,25}\s+University/i) ||
+    text.match(/[A-Z][a-zA-Z\s]{2,25}\s+College/i);
+
+  if (uniMatch) {
+    return uniMatch[0].trim().toLowerCase();
+  }
+
+  return "a computer science background";
 }
 
 function extractResumeEvidence(resumeText = "") {
-  const allLines = lines(resumeText);
-  const STRONG = /^(built|developed|designed|created|implemented|led|managed|optimized|delivered|analyzed|engineered|launched|improved|automated|resolved|deployed|maintained|increased|reduced|shipped|integrated|refactored|migrated|established|wrote|tested)/i;
+  const text = normalize(resumeText);
+  const STRONG =
+    /^(built|developed|designed|created|implemented|led|managed|optimized|delivered|analyzed|engineered|launched|improved|automated|resolved|deployed|maintained|increased|reduced|shipped|integrated|refactored|migrated|established|wrote|tested)/i;
 
-  const bullets = allLines
-    .filter((l) => STRONG.test(l))
-    .map((l) => sentence(l))
-    .filter(Boolean);
+  const found = [];
 
-  const projectish = allLines
-    .filter((l) => /project|platform|database|application|software|api|tool|system|pipeline/i.test(l) && !STRONG.test(l))
-    .map((l) => sentence(l))
-    .filter(Boolean);
+  // Strategy 1: bullet points embedded in PDF blob (• char)
+  const bulletMatches =
+    text.match(/[•\u2022]\s*([A-Z][^•\u2022]{15,250}?)(?=[•\u2022]|$)/g) || [];
+  for (const b of bulletMatches) {
+    const clean = b.replace(/^[•\u2022]\s*/, "").trim();
+    if (STRONG.test(clean)) found.push(sentence(clean));
+  }
 
-  return [...new Set([...bullets, ...projectish])].slice(0, 5);
+  // Strategy 2: newline-separated segments starting with strong verbs
+  const segs = splitIntoSegments(resumeText);
+  for (const seg of segs) {
+    const clean = seg.replace(/^[-*•\u2022]\s*/, "").trim();
+    if (STRONG.test(clean) && clean.length > 20) found.push(sentence(clean));
+  }
+
+  // Strategy 3: project-like descriptions
+  const projectish = segs
+    .filter(
+      (l) =>
+        /project|platform|database|application|software|api|tool|system|pipeline/i.test(l) &&
+        !STRONG.test(l) &&
+        l.length > 25
+    )
+    .map((l) => sentence(l.replace(/^[-*•\u2022]\s*/, "").trim()));
+
+  return [...new Set([...found, ...projectish])].filter(Boolean).slice(0, 5);
 }
 
 function extractResumeSkills(resumeText = "") {
@@ -182,11 +238,6 @@ function extractResumeSkills(resumeText = "") {
 
 // ─── Paragraph builders ──────────────────────────────────────────────────────
 
-/**
- * Paragraph 1: What the job description is requiring.
- * Restates the role's responsibilities, required skills, and qualifications
- * so the hiring team sees the applicant clearly understood the posting.
- */
 function buildParagraphOne({ jobTitle, companyName, requirements }) {
   const companyPhrase = companyName ? ` at ${companyName}` : "";
 
@@ -236,10 +287,6 @@ function buildParagraphOne({ jobTitle, companyName, requirements }) {
   ].join(" ");
 }
 
-/**
- * Paragraph 2: What the person provides — their skills, experience, and
- * accomplishments drawn directly from their resume.
- */
 function buildParagraphTwo({ education, evidence, resumeSkills }) {
   const skillsPhrase = listPhrase(resumeSkills.slice(0, 6));
 
@@ -266,10 +313,6 @@ function buildParagraphTwo({ education, evidence, resumeSkills }) {
   ].join(" ");
 }
 
-/**
- * Paragraph 3: Why those skills apply to this job and why they would be a good fit.
- * Explicitly connects the resume's skills to the job's requirements.
- */
 function buildParagraphThree({ companyName, requirements, resumeSkills, jobTitle }) {
   const jobText = requirements.join(" ").toLowerCase();
   const matched = resumeSkills.filter((s) => jobText.includes(s.toLowerCase()));
@@ -313,20 +356,26 @@ function buildParagraphThree({ companyName, requirements, resumeSkills, jobTitle
 /**
  * Build a full cover letter object from the resume and job description.
  *
- * @param {{ resumeText: string, jobDescription: string, targetRole: string }} params
- * @returns {object} cover letter data
+ * @param {{ resumeText, jobDescription, targetRole, companyName, jobTitle }} params
+ *   companyName and jobTitle are explicit overrides — skip extraction when provided.
  */
-export function buildCoverLetter({ resumeText = "", jobDescription = "", targetRole = "" }) {
+export function buildCoverLetter({
+  resumeText = "",
+  jobDescription = "",
+  targetRole = "",
+  companyName: explicitCompany = "",
+  jobTitle: explicitTitle = "",
+}) {
   const contact = extractContact(resumeText);
-  const jobTitle = extractJobTitle(jobDescription, targetRole);
-  const companyName = extractCompanyName(jobDescription);
+  const jobTitle = explicitTitle.trim() || extractJobTitleFromDesc(jobDescription, targetRole);
+  const companyName = explicitCompany.trim() || extractCompanyNameFromDesc(jobDescription);
   const education = extractEducation(resumeText);
   const requirements = extractRequirements(jobDescription);
   const evidence = extractResumeEvidence(resumeText);
   const resumeSkills = extractResumeSkills(resumeText);
 
   const bodyParagraphs = [
-    buildParagraphOne({ jobTitle, companyName, requirements, education }),
+    buildParagraphOne({ jobTitle, companyName, requirements }),
     buildParagraphTwo({ education, evidence, resumeSkills }),
     buildParagraphThree({ companyName, requirements, resumeSkills, jobTitle }),
   ];
@@ -335,7 +384,11 @@ export function buildCoverLetter({ resumeText = "", jobDescription = "", targetR
     headerName: contact.name,
     headerLine: contact.headerLine,
     linkedIn: contact.linkedIn,
-    dateLine: new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
+    dateLine: new Date().toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    }),
     greeting: "Dear Hiring Team,",
     bodyParagraphs,
     closing:

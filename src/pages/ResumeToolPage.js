@@ -35,8 +35,30 @@ async function extractTextFromPdf(file) {
   for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
     const page = await pdf.getPage(pageNumber);
     const content = await page.getTextContent();
-    const pageText = content.items.map((item) => item.str).join(" ");
-    fullText += `${pageText}\n`;
+
+    // Group items by Y position to reconstruct lines.
+    // Each item's transform is [scaleX, skewX, skewY, scaleY, x, y].
+    // Items on the same line share approximately the same Y value.
+    const lineMap = new Map();
+    for (const item of content.items) {
+      if (!item.str) continue;
+      const y = Math.round(item.transform[5]);
+      if (!lineMap.has(y)) lineMap.set(y, []);
+      lineMap.get(y).push({ x: item.transform[4], text: item.str });
+    }
+
+    // Sort lines top-to-bottom (higher Y = higher on page in PDF coords)
+    const sortedYs = [...lineMap.keys()].sort((a, b) => b - a);
+    const pageLines = sortedYs.map((y) =>
+      lineMap
+        .get(y)
+        .sort((a, b) => a.x - b.x)
+        .map((i) => i.text)
+        .join(" ")
+        .trim()
+    );
+
+    fullText += pageLines.filter(Boolean).join("\n") + "\n";
   }
 
   return fullText;
@@ -126,6 +148,8 @@ export default function ResumeToolPage() {
   const [isGeneratingCoverLetter, setIsGeneratingCoverLetter] = useState(false);
   const [copyNotice, setCopyNotice] = useState("");
   const [authOpen, setAuthOpen] = useState(false);
+  const [coverCompany, setCoverCompany] = useState("");
+  const [coverJobTitle, setCoverJobTitle] = useState("");
 
   const [currentUser, setCurrentUser] = useState(getCurrentUser());
   const isPremium = hasPurchasedApp(APP_IDS.RESUME_SUITE);
@@ -231,6 +255,8 @@ export default function ResumeToolPage() {
         resumeText,
         jobDescription,
         targetRole: role,
+        companyName: coverCompany,
+        jobTitle: coverJobTitle,
       });
       setGeneratedCoverLetter(letter);
       setPremiumTab("cover");
@@ -359,12 +385,30 @@ export default function ResumeToolPage() {
               )}
             </div>
             {isPremium ? (
-              <textarea
-                value={jobDescription}
-                onChange={(event) => setJobDescription(event.target.value)}
-                placeholder="Paste the full job description here. The cover letter generator will use it to tailor your letter to this specific role and company."
-                style={styles.textarea}
-              />
+              <>
+                <div style={styles.coverInputRow}>
+                  <input
+                    type="text"
+                    value={coverCompany}
+                    onChange={(e) => setCoverCompany(e.target.value)}
+                    placeholder="Company name (e.g. Google)"
+                    style={styles.coverInput}
+                  />
+                  <input
+                    type="text"
+                    value={coverJobTitle}
+                    onChange={(e) => setCoverJobTitle(e.target.value)}
+                    placeholder="Job title (e.g. Software Engineer Intern)"
+                    style={styles.coverInput}
+                  />
+                </div>
+                <textarea
+                  value={jobDescription}
+                  onChange={(event) => setJobDescription(event.target.value)}
+                  placeholder="Paste the full job description here. The cover letter generator will use it to tailor your letter to this specific role and company."
+                  style={styles.textarea}
+                />
+              </>
             ) : (
               <div style={styles.lockedBox}>
                 <div style={{ fontWeight: 800, marginBottom: 8, color: "#fde68a" }}>
@@ -1063,6 +1107,23 @@ const styles = {
     lineHeight: 1.6,
     outline: "none",
     boxSizing: "border-box",
+  },
+  coverInputRow: {
+    display: "flex",
+    gap: "10px",
+    marginBottom: "8px",
+  },
+  coverInput: {
+    flex: 1,
+    background: "rgba(255,255,255,0.06)",
+    border: "1px solid rgba(255,255,255,0.12)",
+    borderRadius: "10px",
+    color: "#f8fafc",
+    fontSize: "14px",
+    padding: "10px 14px",
+    outline: "none",
+    boxSizing: "border-box",
+    minWidth: 0,
   },
   lockedBox: {
     minHeight: "240px",
