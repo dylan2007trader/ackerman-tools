@@ -347,7 +347,7 @@ function upgradeBulletFull(bulletText, techStack, angle, isWeak) {
   // 5. Grammar fixes
   upgraded = upgraded
     .replace(/\ba ([AEIOU])/g, "an $1")   // "a ATS" → "an ATS"
-    .replace(/::/g, ":");                   // "Data Science::" → "Data Science:"
+    .replace(/::/g, ":")                    // "Data Science::" → "Data Science:"
     .replace(/\bfreemium\s+SaaS\s+freemium\b/gi, "SaaS freemium");
 
   // 6. Finalize: period + capitalize
