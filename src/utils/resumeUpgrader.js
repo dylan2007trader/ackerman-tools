@@ -678,46 +678,131 @@ function buildVariant(resumeText, targetRole, angle, techStack, weakExamples, ha
 
 function buildSuggestions(resumeText) {
   const suggestions = [];
-  const hasSaasProject = /ackerman|saas\s+platform|multi-app\s+platform|launched\s+a.*platform/i.test(resumeText);
 
-  if (hasSaasProject) {
-    if (!/\b\d+\+?\s*(?:active\s+)?users?\b/i.test(resumeText)) {
+  // ── Role detection (non-exclusive — a full-stack dev can trigger both) ──────
+  const isDataScience = /pandas|numpy|scikit|sklearn|tensorflow|pytorch|jupyter|machine learning|neural network|dataset|regression|classification|clustering|matplotlib|seaborn|model accuracy/i.test(resumeText);
+  const isFrontend    = /\breact\b|\bvue\b|\bangular\b|responsive design|css|tailwind|figma|ui\/ux|component|accessibility/i.test(resumeText);
+  const isBackend     = /\bapi\b|endpoint|postgresql|mysql|mongodb|sqlite|express|django|flask|node\.js|rest\b|graphql|microservice|server.side/i.test(resumeText);
+  const hasProjects   = /\bprojects?\b/i.test(resumeText);
+  const hasLiveProject= /deployed|launched|live|production|hosting/i.test(resumeText);
+  const bulletLines   = (resumeText.match(/^[•\-–*].+$/gm) || []).join(" ");
+
+  // ── Universal: contact header ────────────────────────────────────────────────
+  if (!/github\.com/i.test(resumeText)) {
+    suggestions.push({
+      field: "GitHub link missing from header",
+      tip: "Add github.com/yourusername — expected on every tech resume and checked by most recruiters",
+    });
+  }
+  if (!/linkedin\.com/i.test(resumeText)) {
+    suggestions.push({
+      field: "LinkedIn link missing from header",
+      tip: "Add linkedin.com/in/yourname — many ATS systems score resumes lower without it",
+    });
+  }
+
+  // ── Universal: education ─────────────────────────────────────────────────────
+  if (/education/i.test(resumeText)) {
+    if (!/gpa\s*[:\s]?\s*[\d.]+/i.test(resumeText)) {
       suggestions.push({
-        field: "Active user count",
-        tip: "Add to your platform bullet — e.g. \"200+ active users\" or \"50+ registered accounts\"",
+        field: "GPA not listed",
+        tip: "Add your GPA if it's 3.5 or above — worth showing for entry-level and internship applications",
       });
     }
-    if (!/[a-z0-9-]+\.(com|io|dev|app)\b/i.test(resumeText)) {
+    if (!/relevant coursework|coursework:/i.test(resumeText)) {
       suggestions.push({
-        field: "Live project URL",
-        tip: "Drop it in: \"Deployed at ackermantools.com\" — proves the product is real and running",
-      });
-    }
-    if (!/\d+\+?\s*resumes?\s*(\/|per)\s*week|\d+\+?\s*requests?\s*(\/|per)\s*week/i.test(resumeText)) {
-      suggestions.push({
-        field: "Weekly usage metric",
-        tip: "e.g. \"generating 50+ resumes/week\" — shows traction, not just a deployed side project",
-      });
-    }
-    if (!/vercel|heroku|netlify|railway|render\.com|\baws\b|\bgcp\b/i.test(resumeText)) {
-      suggestions.push({
-        field: "Deployment platform",
-        tip: "e.g. \"deployed on Vercel\" — shows production maturity, not a localhost project",
-      });
-    }
-    if (!/stripe|revenue|\$\d+|paying\s+customer|monetiz/i.test(resumeText)) {
-      suggestions.push({
-        field: "Revenue or Stripe integration",
-        tip: "e.g. \"Stripe-integrated checkout\" — strongest signal for a solo SaaS build if applicable",
+        field: "No relevant coursework listed",
+        tip: "Add under your degree: \"Relevant Coursework: Data Structures, Algorithms, [your strongest classes]\"",
       });
     }
   }
 
-  if (/education/i.test(resumeText) && !/relevant coursework|coursework:/i.test(resumeText)) {
+  // ── Universal: bullets need at least one number ──────────────────────────────
+  const metricCount = (resumeText.match(/\b\d+(?:\.\d+)?%|\b\d[\d,]{2,}\b|\b\d+x\b|x\d+\b/g) || []).length;
+  if (metricCount < 2) {
     suggestions.push({
-      field: "Relevant coursework",
-      tip: "Add under your degree: \"Relevant Coursework: Data Structures, Algorithms, Database Systems\"",
+      field: "Almost no measurable proof in bullets",
+      tip: "Add at least one number per job/project — users, %, ms of latency, rows processed, test coverage, requests/day, files parsed",
     });
+  }
+
+  // ── Universal: tech named in bullets (not just skills section) ───────────────
+  const techInBullets = /\b(React|Python|Node\.js|SQL|Docker|AWS|TensorFlow|Pandas|Express|Django|Flask|PostgreSQL|MongoDB|TypeScript|Java|Spring|Vue|Angular)\b/i.test(bulletLines);
+  if (!techInBullets && hasProjects) {
+    suggestions.push({
+      field: "Technologies not named in project bullets",
+      tip: "Name the stack in your bullets, not only in Skills — e.g. \"Built a REST API using Node.js/Express and PostgreSQL\"",
+    });
+  }
+
+  // ── Data science specific ─────────────────────────────────────────────────────
+  if (isDataScience) {
+    if (!/accuracy|f1[\s-]score|auc|roc|mse|rmse|precision|recall|r²|r2\b/i.test(resumeText)) {
+      suggestions.push({
+        field: "No model performance metric",
+        tip: "Add the result of your model: \"Achieved 94% accuracy\", \"F1 score of 0.91\", \"reduced RMSE by 18%\"",
+      });
+    }
+    if (!/\b\d[\d,]*\s*(rows?|records?|samples?|observations?|images?|files?|instances?)\b/i.test(resumeText)) {
+      suggestions.push({
+        field: "No dataset scale mentioned",
+        tip: "Add dataset size to at least one bullet: \"processed 500K rows\" or \"trained on 50K labeled images\"",
+      });
+    }
+    if (!/matplotlib|seaborn|tableau|plotly|visualization|dashboard/i.test(resumeText)) {
+      suggestions.push({
+        field: "No data visualization tool mentioned",
+        tip: "If you built charts or dashboards, name the tool — Matplotlib, Seaborn, Tableau, or Plotly",
+      });
+    }
+  }
+
+  // ── Frontend specific ─────────────────────────────────────────────────────────
+  if (isFrontend) {
+    if (!/lighthouse|load time|bundle size|web vital|lcp|cls|fid|performance score/i.test(resumeText)) {
+      suggestions.push({
+        field: "No frontend performance metric",
+        tip: "e.g. \"Improved Lighthouse score from 62 to 94\" or \"reduced bundle size by 30%\" — shows production-quality thinking",
+      });
+    }
+    if (!/\d+\s*(users?|active|monthly|daily|page views?|visitors?)/i.test(resumeText)) {
+      suggestions.push({
+        field: "No user count or traffic metric",
+        tip: "If your app has real users: \"used by 300+ students\" or \"500 monthly active users\"",
+      });
+    }
+  }
+
+  // ── Backend specific ──────────────────────────────────────────────────────────
+  if (isBackend) {
+    if (!/\d+\s*(req|requests?|rps|endpoints?|api calls?|transactions?)/i.test(resumeText)) {
+      suggestions.push({
+        field: "No API throughput or scale metric",
+        tip: "e.g. \"handles 500 req/s\" or \"built 12 REST endpoints\" — shows the API is real and scoped",
+      });
+    }
+    if (!/test|jest|pytest|mocha|coverage|unit test|integration test/i.test(resumeText)) {
+      suggestions.push({
+        field: "No testing mentioned",
+        tip: "If you wrote tests, add it: \"80% unit test coverage with Jest\" — strong signal for backend and SWE roles",
+      });
+    }
+  }
+
+  // ── Live/deployed project ─────────────────────────────────────────────────────
+  if (hasLiveProject) {
+    if (!/vercel|heroku|netlify|railway|render\.com|\baws\b|\bgcp\b|azure|app store|play store/i.test(resumeText)) {
+      suggestions.push({
+        field: "Deployment platform not named",
+        tip: "Name where it runs: \"deployed on Vercel\", \"hosted on AWS EC2\" — proves it's live, not just built",
+      });
+    }
+    if (!/[a-z0-9-]+\.(com|io|dev|app|net)\b/i.test(resumeText)) {
+      suggestions.push({
+        field: "No live URL in resume",
+        tip: "Add the URL to the project header or bullet — the most direct proof the product is working",
+      });
+    }
   }
 
   return suggestions;
