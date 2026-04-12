@@ -330,7 +330,7 @@ function applyAtsSwaps(text) {
 
 const EXPANSION_RULES = [
   // Auth / login / accounts
-  { test: /\b(auth|login|sign[\s-]?in|register|signup|user account)\b/i,
+  { test: /\bauth\w*|\blogin\b|\bsign[\s-]?in\b|\bregister\b|\bsignup\b|\buser account\b/i,
     avoid: /jwt|oauth|bcrypt|hash|session|token|credential|permission/i,
     tail: ", implementing secure credential hashing, session management, and token-based access control" },
 
@@ -355,7 +355,7 @@ const EXPANSION_RULES = [
     tail: ", evaluating performance using cross-validation, precision, and recall metrics on labeled data" },
 
   // Data analysis / processing
-  { test: /\b(analyz|data analysis|data processing|exploratory)\b/i,
+  { test: /\banalyz\w*|\bdata analysis\b|\bdata processing\b|\bexploratory\b/i,
     avoid: /insight|trend|visuali|pandas|numpy|matplotlib|correlation/i,
     tail: " using Python (Pandas, NumPy) to identify trends, outliers, and actionable insights" },
 
@@ -390,7 +390,7 @@ const EXPANSION_RULES = [
     tail: ", eliminating manual overhead and reducing repetitive processing time" },
 
   // SQL / queries
-  { test: /\b(sql quer|wrote queries|database queries)\b/i,
+  { test: /\bsql quer\w*|\bwrote quer\w*|\bdatabase quer\w*/i,
     avoid: /complex|multi.table|join|index|optim|aggregat/i,
     tail: " including multi-table JOINs, aggregations, and indexed lookups for performance" },
 
