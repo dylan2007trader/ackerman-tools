@@ -454,47 +454,76 @@ const DATE_FRAG =
   /(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s*\.?\s*\d{4}|\bPresent\b|\b\d{4}\b/i;
 
 // ─── Specific bullet rewrites for known content ──────────────────────────────
-// Keyed by a pattern that matches the ORIGINAL bullet text. Applied before
-// generic verb replacement. These produce polished, metric-driven output.
+// Dynamic — accepts user-supplied project stats to inject real numbers.
 
-const SPECIFIC_REWRITES = {
-  technical: [
-    { test: /built\s+and\s+launched\s+a\s+multi-app\s+platform/i,
-      out: "Engineered a production SaaS platform in React/JavaScript, shipping one new tool per week with JWT auth, role-based access control, and per-user premium feature gating." },
-    { test: /resume analysis\s+and\s+cover\s+letter\s+generator/i,
-      out: "Built an ATS resume analysis engine and cover letter generator using client-side NLP, serving structured keyword scoring, section detection, and job-tailored output." },
-    { test: /currently working on\s+a?\s*trip\s+optimiz/i,
-      out: "Engineering a route-optimization tool using graph-based algorithms and geospatial APIs to minimize travel time for multi-stop itineraries." },
-    { test: /freemium product model\s+with\s+authentication/i,
-      out: "Architected a SaaS product model with JWT-based authentication, role-based feature gating, and SQLite-backed purchase persistence." },
-    { test: /full.stack features.+file pars/i,
-      out: "Shipped end-to-end features spanning multi-format file parsing (PDF, DOCX, TXT), user account management, and persistent premium purchase tracking." },
-  ],
-  impact: [
-    { test: /built\s+and\s+launched\s+a\s+multi-app\s+platform/i,
-      out: "Launched a production SaaS platform releasing one new tool per week, driving real-user adoption with a freemium conversion model and persistent account-linked premium access." },
-    { test: /resume analysis\s+and\s+cover\s+letter\s+generator/i,
-      out: "Shipped an ATS resume grader and cover letter generator — the platform's flagship product — with structured scoring, automated keyword detection, and tailored feedback output." },
-    { test: /currently working on\s+a?\s*trip\s+optimiz/i,
-      out: "Delivering a route-optimization app targeting travelers with multi-stop itinerary planning and real-time optimization output." },
-    { test: /freemium product model\s+with\s+authentication/i,
-      out: "Designed a SaaS product model with JWT-based authentication and role-based premium feature gating, enabling monetization without requiring third-party services." },
-    { test: /full.stack features.+file pars/i,
-      out: "Owned full-stack delivery of multi-format file parsing (PDF, DOCX, TXT), user account management, and database-backed purchase persistence." },
-  ],
-  academic: [
-    { test: /built\s+and\s+launched\s+a\s+multi-app\s+platform/i,
-      out: "Developed and deployed a production SaaS platform in React/JavaScript with a weekly release cadence, JWT authentication, and role-based feature access." },
-    { test: /resume analysis\s+and\s+cover\s+letter\s+generator/i,
-      out: "Implemented an ATS resume analysis engine and cover letter generator with structured keyword scoring and tailored feedback generation." },
-    { test: /currently working on\s+a?\s*trip\s+optimiz/i,
-      out: "Developing a route-optimization application applying graph algorithms and geospatial data to multi-stop travel planning." },
-    { test: /freemium product model\s+with\s+authentication/i,
-      out: "Designed a SaaS product model with JWT-based authentication, role-based access control, and persistent purchase tracking." },
-    { test: /full.stack features.+file pars/i,
-      out: "Applied full-stack development to deliver multi-format file parsing (PDF, DOCX, TXT), user account management, and SQLite-backed purchase persistence." },
-  ],
-};
+function getSpecificRewrites(angle, stats = {}) {
+  const { users, liveUrl, requestsPerWeek, frameworks, deployment, hasStripe } = stats;
+
+  const fwText = frameworks || "React/JavaScript";
+  const urlPart   = liveUrl          ? ` at ${liveUrl}`                      : "";
+  const usersPart = users            ? ` with ${users} active users`          : "";
+  const reqPart   = requestsPerWeek  ? `, generating ${requestsPerWeek} resumes/week` : "";
+  const deployPart= deployment       ? `, deployed on ${deployment}`          : "";
+  const hasStats  = !!(users || liveUrl || requestsPerWeek || deployment);
+
+  // Platform bullet — focused on scale/deployment, JWT lives in the auth bullet below
+  const platformBullet = {
+    technical: hasStats
+      ? `Engineered a production SaaS platform${urlPart}${usersPart}${reqPart} using ${fwText}, with role-based access control and per-user premium feature gating${deployPart}.`
+      : `Engineered a production SaaS platform in ${fwText}, shipping one new tool per week with role-based access control and per-user premium feature gating.`,
+    impact: hasStats
+      ? `Launched a production SaaS platform${urlPart}${usersPart}${reqPart}, monetized via a freemium conversion model with account-linked premium access${deployPart}.`
+      : `Launched a production SaaS platform releasing one new tool per week, driving real-user adoption with a freemium conversion model and persistent account-linked premium access.`,
+    academic: hasStats
+      ? `Developed and deployed a production SaaS platform${urlPart}${usersPart}${reqPart} using ${fwText} with role-based feature access${deployPart}.`
+      : `Developed and deployed a production SaaS platform in ${fwText} with a weekly release cadence and role-based feature access.`,
+  };
+
+  // Analysis bullet — clean, no buzzwords
+  const analysisBullet =
+    "Built a resume analysis tool that scores resumes, detects missing keywords, and generates tailored suggestions based on job descriptions.";
+
+  const all = {
+    technical: [
+      { test: /built\s+and\s+launched\s+a\s+multi-app\s+platform/i,
+        out: platformBullet.technical },
+      { test: /resume analysis\s+and\s+cover\s+letter\s+generator/i,
+        out: analysisBullet },
+      { test: /currently working on\s+a?\s*trip\s+optimiz/i,
+        out: "Engineering a route-optimization tool using graph-based algorithms and geospatial APIs to minimize travel time for multi-stop itineraries." },
+      { test: /freemium product model\s+with\s+authentication/i,
+        out: "Architected a SaaS product model with JWT-based authentication, role-based feature gating, and SQLite-backed purchase persistence." },
+      { test: /full.stack features.+file pars/i,
+        out: "Shipped end-to-end features spanning multi-format file parsing (PDF, DOCX, TXT), user account management, and persistent premium purchase tracking." },
+    ],
+    impact: [
+      { test: /built\s+and\s+launched\s+a\s+multi-app\s+platform/i,
+        out: platformBullet.impact },
+      { test: /resume analysis\s+and\s+cover\s+letter\s+generator/i,
+        out: analysisBullet },
+      { test: /currently working on\s+a?\s*trip\s+optimiz/i,
+        out: "Delivering a route-optimization app targeting travelers with multi-stop itinerary planning and real-time optimization output." },
+      { test: /freemium product model\s+with\s+authentication/i,
+        out: "Designed a SaaS product model with JWT-based authentication and role-based premium feature gating, enabling monetization without requiring third-party services." },
+      { test: /full.stack features.+file pars/i,
+        out: "Owned full-stack delivery of multi-format file parsing (PDF, DOCX, TXT), user account management, and database-backed purchase persistence." },
+    ],
+    academic: [
+      { test: /built\s+and\s+launched\s+a\s+multi-app\s+platform/i,
+        out: platformBullet.academic },
+      { test: /resume analysis\s+and\s+cover\s+letter\s+generator/i,
+        out: analysisBullet },
+      { test: /currently working on\s+a?\s*trip\s+optimiz/i,
+        out: "Developing a route-optimization application applying graph algorithms and geospatial data to multi-stop travel planning." },
+      { test: /freemium product model\s+with\s+authentication/i,
+        out: "Designed a SaaS product model with JWT-based authentication, role-based access control, and persistent purchase tracking." },
+      { test: /full.stack features.+file pars/i,
+        out: "Applied full-stack development to deliver multi-format file parsing (PDF, DOCX, TXT), user account management, and SQLite-backed purchase persistence." },
+    ],
+  };
+
+  return all[angle] || [];
+}
 
 // Server/hospitality condensed line — replaces all server job bullets
 const SERVER_CONDENSED = "Delivered high-volume client service across multiple fast-paced restaurants, developing communication, team coordination, and customer de-escalation skills.";
@@ -503,8 +532,8 @@ function isServerJobLine(text) {
   return /ihop|first watch|villa peru|server\s*[–\-]/i.test(text);
 }
 
-function applySpecificRewrites(bulletText, angle) {
-  const rewrites = SPECIFIC_REWRITES[angle] || [];
+function applySpecificRewrites(bulletText, angle, stats = {}) {
+  const rewrites = getSpecificRewrites(angle, stats);
   for (const { test, out } of rewrites) {
     if (test.test(bulletText)) return out;
   }
@@ -513,7 +542,7 @@ function applySpecificRewrites(bulletText, angle) {
 
 // ─── Variant builder ────────────────────────────────────────────────────────
 
-function buildVariant(resumeText, targetRole, angle, techStack, weakExamples, hasSummary) {
+function buildVariant(resumeText, targetRole, angle, techStack, weakExamples, hasSummary, stats = {}) {
   const originalLines = resumeText.split("\n");
   const upgradedLines = [];
   let inSoftSkills = false;
@@ -623,7 +652,7 @@ function buildVariant(resumeText, targetRole, angle, techStack, weakExamples, ha
       const bulletText = trimmed.replace(/^[-*•\u2022]\s*/, "");
 
       // Try specific rewrite first
-      const specific = applySpecificRewrites(bulletText, angle);
+      const specific = applySpecificRewrites(bulletText, angle, stats);
       let upgraded;
       if (specific) {
         upgraded = specific;
@@ -657,15 +686,50 @@ function buildVariant(resumeText, targetRole, angle, techStack, weakExamples, ha
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 
-export function buildAllVariants(resumeText = "", targetRole = "", analysis = {}) {
+function injectCoursework(lines, coursework) {
+  if (!coursework) return lines;
+  const result = [];
+  let inEdu = false;
+  let injected = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    result.push(line);
+
+    if (/^education$/i.test(trimmed) && trimmed.length < 20) {
+      inEdu = true;
+      continue;
+    }
+    if (inEdu && SECTION_HEADER_RE.test(trimmed) && trimmed.length < 55 && !/^education/i.test(trimmed)) {
+      inEdu = false;
+    }
+    // Inject after the degree line (contains "Bachelor/Master/Science/Arts/degree")
+    if (
+      inEdu &&
+      !injected &&
+      /\b(bachelor|master|science|arts|b\.s\.|b\.a\.|associate|degree)\b/i.test(trimmed) &&
+      !/relevant coursework/i.test(trimmed)
+    ) {
+      result.push(`Relevant Coursework: ${coursework}`);
+      injected = true;
+    }
+  }
+  return result;
+}
+
+export function buildAllVariants(resumeText = "", targetRole = "", analysis = {}, projectStats = {}) {
   const techStack = extractTechStack(resumeText);
   const hasSummary = /\b(summary|objective|profile|about me)\b/i.test(resumeText);
   const weakExamples = analysis?.weakExamples || [];
   const missingKeywords = findMissingKeywords(resumeText, targetRole);
+  const alreadyHasCoursework = /relevant coursework/i.test(resumeText);
 
   const makeVariant = (angle) => {
-    let lines = buildVariant(resumeText, targetRole, angle, techStack, weakExamples, hasSummary);
+    let lines = buildVariant(resumeText, targetRole, angle, techStack, weakExamples, hasSummary, projectStats);
     lines = injectKeywordsToSkillsSection(lines, missingKeywords);
+    if (projectStats.coursework && !alreadyHasCoursework) {
+      lines = injectCoursework(lines, projectStats.coursework);
+    }
     return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
   };
 
@@ -850,34 +914,43 @@ function parseEduLine(line) {
   return { institution, location, dates };
 }
 
-// ── Skills proficient/familiar split ─────────────────────────────────────
+// ── Skill categorization ──────────────────────────────────────────────────
 
-// Terms that are competencies/methodologies, not discrete tools/languages.
-// These get their own "Competencies:" row instead of being lumped into Familiar.
-const COMPETENCY_TERMS = new Set([
-  "object-oriented programming", "object oriented programming", "oop",
-  "data structures", "algorithms", "software development", "software development life cycle",
-  "sdlc", "etl pipelines", "etl", "data cleaning", "large dataset management",
-  "relational databases", "database design", "api design", "system design",
-  "full-stack development", "frontend development", "backend development",
-  "agile methodology", "scrum methodology", "code review", "debugging",
-  "version control", "automated testing", "unit testing", "integration testing",
-  "interfaces", "design patterns",
+const SKILL_LANGUAGES = new Set([
+  "python", "java", "javascript", "typescript", "sql", "c++", "c#", "go",
+  "swift", "kotlin", "matlab", "bash", "ruby", "php", "r", "scala",
 ]);
 
-function splitSkills(skillsLines, resumeText) {
-  const allKnownTech = [
-    "Python", "Java", "JavaScript", "TypeScript", "React", "Node.js", "Express",
-    "SQL", "PostgreSQL", "MySQL", "MongoDB", "SQLite", "Redis", "Pandas", "NumPy",
-    "Git", "GitHub", "AWS", "Docker", "Kubernetes", "HTML", "CSS", "Sass",
-    "scikit-learn", "TensorFlow", "PyTorch", "Agile", "CI/CD", "REST", "GraphQL",
-    "Linux", "Bash", "C++", "C#", "Go", "Swift", "Kotlin", "MATLAB",
-  ];
+const SKILL_FRAMEWORKS_TOOLS = new Set([
+  "react", "node.js", "express", "next.js", "vue", "angular", "django", "flask",
+  "spring", "git", "github", "docker", "kubernetes", "aws", "gcp", "azure",
+  "ci/cd", "linux", "sass", "tailwind", "bootstrap", "redux", "webpack",
+  "postgresql", "mysql", "mongodb", "sqlite", "redis", "jest", "vite",
+]);
 
-  const bulletText = (resumeText.match(/^[•\-–*].+$/gm) || []).join(" ").toLowerCase();
-  const proficientSet = new Set();
-  const familiarSet = new Set();
-  const competencySet = new Set();
+const SKILL_DATA = new Set([
+  "pandas", "numpy", "scikit-learn", "tensorflow", "pytorch", "matplotlib",
+  "seaborn", "jupyter", "spark", "hadoop", "etl pipelines", "etl",
+]);
+
+const SKILL_CONCEPTS = new Set([
+  "oop", "object-oriented programming", "object oriented programming",
+  "data structures", "algorithms", "rest apis", "rest", "restful apis", "graphql",
+  "database design", "system design", "agile", "agile methodology",
+  "scrum", "scrum methodology", "microservices", "api design",
+  "full-stack development", "frontend development", "backend development",
+  "unit testing", "version control", "debugging", "code review",
+  "software development life cycle", "sdlc", "design patterns",
+]);
+
+// Skills to omit entirely — too basic to list
+const SKILL_EXCLUDE = new Set(["html", "html5", "css", "css3"]);
+
+function splitSkillsCategorized(skillsLines) {
+  const languages = [];
+  const frameworksTools = [];
+  const data = [];
+  const concepts = [];
 
   const rawTerms = [];
   for (const line of skillsLines) {
@@ -889,31 +962,27 @@ function splitSkills(skillsLines, resumeText) {
     });
   }
 
+  const seen = new Set();
   for (const term of rawTerms) {
     const lower = term.toLowerCase();
+    if (seen.has(lower) || SKILL_EXCLUDE.has(lower)) continue;
+    seen.add(lower);
 
-    // Competencies go to their own bucket
-    if (COMPETENCY_TERMS.has(lower)) {
-      competencySet.add(term);
-      continue;
-    }
-
-    const inBullets = bulletText.includes(lower) ||
-      allKnownTech.some((k) => k.toLowerCase() === lower && bulletText.includes(lower));
-
-    if (inBullets) {
-      proficientSet.add(term);
+    if (SKILL_LANGUAGES.has(lower)) {
+      languages.push(term);
+    } else if (SKILL_DATA.has(lower)) {
+      data.push(term);
+    } else if (SKILL_CONCEPTS.has(lower)) {
+      concepts.push(term);
     } else {
-      familiarSet.add(term);
+      // Everything else: frameworks, tools, platforms
+      frameworksTools.push(term);
     }
   }
 
-  return {
-    proficient: [...proficientSet],
-    familiar: [...familiarSet],
-    competencies: [...competencySet],
-  };
+  return { languages, frameworksTools, data, concepts };
 }
+
 
 // ── Tech extractor for "Utilized:" line ───────────────────────────────────
 
@@ -1139,34 +1208,25 @@ function renderProjects(lines) {
 }
 
 function renderSkills(lines, fullText) {
-  const { proficient, familiar, competencies } = splitSkills(lines, fullText);
-
-  const atsLine = lines.find((l) => /^additional ats keywords/i.test(l));
-  const atsKeywords = atsLine
-    ? atsLine.replace(/^additional ats keywords\s*[:\-]\s*/i, "").trim()
-    : "";
+  const { languages, frameworksTools, data, concepts } = splitSkillsCategorized(lines);
 
   let html = "";
 
-  if (proficient.length || familiar.length || competencies.length) {
-    if (proficient.length) {
-      html += `<div class="skill-row"><span class="skill-label">Proficient:</span> ${esc(proficient.join(", "))}</div>`;
-    }
-    if (familiar.length) {
-      html += `<div class="skill-row"><span class="skill-label">Familiar:</span> ${esc(familiar.join(", "))}</div>`;
-    }
-    if (competencies.length) {
-      html += `<div class="skill-row"><span class="skill-label">Competencies:</span> ${esc(competencies.join(", "))}</div>`;
-    }
+  if (languages.length || frameworksTools.length || data.length || concepts.length) {
+    if (languages.length)
+      html += `<div class="skill-row"><span class="skill-label">Languages:</span> ${esc(languages.join(", "))}</div>`;
+    if (frameworksTools.length)
+      html += `<div class="skill-row"><span class="skill-label">Frameworks &amp; Tools:</span> ${esc(frameworksTools.join(", "))}</div>`;
+    if (data.length)
+      html += `<div class="skill-row"><span class="skill-label">Data:</span> ${esc(data.join(", "))}</div>`;
+    if (concepts.length)
+      html += `<div class="skill-row"><span class="skill-label">Concepts:</span> ${esc(concepts.join(", "))}</div>`;
   } else {
+    // Fallback: render raw lines (minus ATS keywords row)
     for (const line of lines) {
       if (!line.trim() || /^additional ats keywords/i.test(line)) continue;
       html += `<div class="skill-row">${esc(line)}</div>`;
     }
-  }
-
-  if (atsKeywords) {
-    html += `<div class="skill-row"><span class="skill-label">ATS Keywords:</span> ${esc(atsKeywords)}</div>`;
   }
 
   return html;
@@ -1254,6 +1314,7 @@ function buildResumeHtml(text, filename) {
       line-height: 1.3;
     }
 
+
     .resume-header { text-align: center; margin-bottom: 7px; }
     .resume-name {
       font-size: 19pt;
@@ -1299,14 +1360,16 @@ function buildResumeHtml(text, filename) {
 
     .body-line { font-size: 10pt; margin-bottom: 1px; }
 
-    /* Suppress ALL browser-added headers/footers (URL, date, title) */
+    /* Suppress browser-added headers/footers: set @page margin to 0 so
+       Chrome/Firefox have no space to render URL, date, or title stamps.
+       Content margins are handled by body above. */
     @page {
       size: letter;
-      margin: 0.5in;
+      margin: 0;
     }
     @media print {
       html, body { background: #fff; -webkit-print-color-adjust: exact; }
-      body { margin: 0 !important; }
+      body { margin: 0.5in !important; }
       header, footer,
       #header, #footer,
       .header, .footer { display: none !important; height: 0 !important; }
