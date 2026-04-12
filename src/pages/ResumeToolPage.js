@@ -151,15 +151,7 @@ export default function ResumeToolPage() {
   const [authOpen, setAuthOpen] = useState(false);
   const [coverCompany, setCoverCompany] = useState("");
   const [coverJobTitle, setCoverJobTitle] = useState("");
-  const [projectStats, setProjectStats] = useState({
-    users: "",
-    liveUrl: "",
-    hasStripe: false,
-    requestsPerWeek: "",
-    frameworks: "",
-    deployment: "",
-    coursework: "",
-  });
+  const [suggestions, setSuggestions] = useState([]);
 
   const [currentUser, setCurrentUser] = useState(getCurrentUser());
   const isPremium = hasPurchasedApp(APP_IDS.RESUME_SUITE);
@@ -229,7 +221,8 @@ export default function ResumeToolPage() {
     setIsGeneratingResume(true);
     setError("");
     try {
-      const { variants, missingItems: missing } = buildAllVariants(resumeText, role, analysis || {}, projectStats);
+      const { variants, missingItems: missing, suggestions: sugg } = buildAllVariants(resumeText, role, analysis || {});
+      setSuggestions(sugg || []);
       setGeneratedVariants(variants);
       setActiveVariant(0);
       setMissingItems(missing);
@@ -750,88 +743,6 @@ export default function ResumeToolPage() {
             </div>
           </section>
 
-          {/* ── Project stats form ─────────────────────────────── */}
-          <div style={styles.statsPanel}>
-            <div style={styles.statsPanelHeader}>
-              <div style={styles.eyebrowSmall}>optional — injected into your resume</div>
-              <h3 style={styles.sectionTitle}>Tell us your real numbers</h3>
-              <p style={styles.outputMeta}>
-                Fill in what applies. We'll inject these directly into your resume bullets so recruiters see actual metrics instead of generic descriptions.
-              </p>
-            </div>
-            <div style={styles.statsFormGrid}>
-              <label style={styles.statsField}>
-                <span style={styles.statsLabel}>Active users</span>
-                <input
-                  type="text"
-                  value={projectStats.users}
-                  onChange={(e) => setProjectStats((s) => ({ ...s, users: e.target.value }))}
-                  placeholder="e.g. 200+, 50, none yet"
-                  style={styles.statsInput}
-                />
-              </label>
-              <label style={styles.statsField}>
-                <span style={styles.statsLabel}>Live URL</span>
-                <input
-                  type="text"
-                  value={projectStats.liveUrl}
-                  onChange={(e) => setProjectStats((s) => ({ ...s, liveUrl: e.target.value }))}
-                  placeholder="e.g. ackermantools.com"
-                  style={styles.statsInput}
-                />
-              </label>
-              <label style={styles.statsField}>
-                <span style={styles.statsLabel}>Resumes / requests per week</span>
-                <input
-                  type="text"
-                  value={projectStats.requestsPerWeek}
-                  onChange={(e) => setProjectStats((s) => ({ ...s, requestsPerWeek: e.target.value }))}
-                  placeholder="e.g. 50+"
-                  style={styles.statsInput}
-                />
-              </label>
-              <label style={styles.statsField}>
-                <span style={styles.statsLabel}>Frameworks used</span>
-                <input
-                  type="text"
-                  value={projectStats.frameworks}
-                  onChange={(e) => setProjectStats((s) => ({ ...s, frameworks: e.target.value }))}
-                  placeholder="e.g. React, Node.js, Express"
-                  style={styles.statsInput}
-                />
-              </label>
-              <label style={styles.statsField}>
-                <span style={styles.statsLabel}>Deployed on</span>
-                <input
-                  type="text"
-                  value={projectStats.deployment}
-                  onChange={(e) => setProjectStats((s) => ({ ...s, deployment: e.target.value }))}
-                  placeholder="e.g. Vercel, AWS, Heroku"
-                  style={styles.statsInput}
-                />
-              </label>
-              <label style={styles.statsField}>
-                <span style={styles.statsLabel}>Relevant coursework</span>
-                <input
-                  type="text"
-                  value={projectStats.coursework}
-                  onChange={(e) => setProjectStats((s) => ({ ...s, coursework: e.target.value }))}
-                  placeholder="e.g. Data Structures, Algorithms, Database Systems"
-                  style={styles.statsInput}
-                />
-              </label>
-              <label style={{ ...styles.statsField, flexDirection: "row", alignItems: "center", gap: "10px" }}>
-                <input
-                  type="checkbox"
-                  checked={projectStats.hasStripe}
-                  onChange={(e) => setProjectStats((s) => ({ ...s, hasStripe: e.target.checked }))}
-                  style={{ width: 16, height: 16, accentColor: "#6366f1", flexShrink: 0 }}
-                />
-                <span style={styles.statsLabel}>Stripe or payment integration</span>
-              </label>
-            </div>
-          </div>
-
           <div style={styles.premiumInfoGrid}>
             <section style={styles.dashboardCard}>
               <div style={styles.eyebrowSmall}>premium value</div>
@@ -1007,6 +918,22 @@ export default function ResumeToolPage() {
                   )}
 
                   <pre style={styles.outputPreview}>{generatedVariants[activeVariant]?.text}</pre>
+
+                  {/* ── Suggestions: what to add manually ── */}
+                  {suggestions.length > 0 && (
+                    <div style={styles.suggestionsBox}>
+                      <div style={styles.suggestionsHeading}>What to fill in manually</div>
+                      <p style={styles.suggestionsDesc}>
+                        We couldn't infer these from your resume — they'd make your bullets significantly stronger. Edit the resume output above and add them directly:
+                      </p>
+                      {suggestions.map((s, i) => (
+                        <div key={i} style={styles.suggestionRow}>
+                          <span style={styles.suggestionField}>{s.field}</span>
+                          <span style={styles.suggestionTip}>{s.tip}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1442,42 +1369,44 @@ const styles = {
     border: "1px solid rgba(148,163,184,0.14)",
     marginBottom: "26px",
   },
-  statsPanel: {
-    background: "rgba(99,102,241,0.07)",
-    border: "1px solid rgba(99,102,241,0.22)",
-    borderRadius: "12px",
-    padding: "24px",
-    marginBottom: "28px",
+  suggestionsBox: {
+    marginTop: "20px",
+    background: "rgba(234,179,8,0.06)",
+    border: "1px solid rgba(234,179,8,0.22)",
+    borderRadius: "10px",
+    padding: "18px 20px",
   },
-  statsPanelHeader: {
-    marginBottom: "18px",
+  suggestionsHeading: {
+    fontSize: "13px",
+    fontWeight: 800,
+    color: "#fde68a",
+    letterSpacing: "0.05em",
+    textTransform: "uppercase",
+    marginBottom: "6px",
   },
-  statsFormGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-    gap: "14px",
+  suggestionsDesc: {
+    fontSize: "13px",
+    color: "#94a3b8",
+    margin: "0 0 14px 0",
+    lineHeight: 1.55,
   },
-  statsField: {
+  suggestionRow: {
     display: "flex",
     flexDirection: "column",
-    gap: "6px",
+    gap: "2px",
+    marginBottom: "10px",
+    paddingBottom: "10px",
+    borderBottom: "1px solid rgba(234,179,8,0.1)",
   },
-  statsLabel: {
-    fontSize: "12px",
+  suggestionField: {
+    fontSize: "13px",
     fontWeight: 700,
-    color: "#94a3b8",
-    letterSpacing: "0.04em",
-    textTransform: "uppercase",
+    color: "#fcd34d",
   },
-  statsInput: {
-    background: "rgba(15,23,42,0.6)",
-    border: "1px solid rgba(148,163,184,0.2)",
-    borderRadius: "6px",
-    color: "#f1f5f9",
-    fontSize: "14px",
-    padding: "8px 12px",
-    outline: "none",
-    width: "100%",
+  suggestionTip: {
+    fontSize: "12px",
+    color: "#94a3b8",
+    lineHeight: 1.5,
   },
   premiumInfoGrid: {
     display: "grid",

@@ -456,27 +456,12 @@ const DATE_FRAG =
 // ─── Specific bullet rewrites for known content ──────────────────────────────
 // Dynamic — accepts user-supplied project stats to inject real numbers.
 
-function getSpecificRewrites(angle, stats = {}) {
-  const { users, liveUrl, requestsPerWeek, frameworks, deployment, hasStripe } = stats;
-
-  const fwText = frameworks || "React/JavaScript";
-  const urlPart   = liveUrl          ? ` at ${liveUrl}`                      : "";
-  const usersPart = users            ? ` with ${users} active users`          : "";
-  const reqPart   = requestsPerWeek  ? `, generating ${requestsPerWeek} resumes/week` : "";
-  const deployPart= deployment       ? `, deployed on ${deployment}`          : "";
-  const hasStats  = !!(users || liveUrl || requestsPerWeek || deployment);
-
-  // Platform bullet — focused on scale/deployment, JWT lives in the auth bullet below
+function getSpecificRewrites(angle) {
+  // Platform bullet — focused on architecture, JWT lives in the auth bullet only
   const platformBullet = {
-    technical: hasStats
-      ? `Engineered a production SaaS platform${urlPart}${usersPart}${reqPart} using ${fwText}, with role-based access control and per-user premium feature gating${deployPart}.`
-      : `Engineered a production SaaS platform in ${fwText}, shipping one new tool per week with role-based access control and per-user premium feature gating.`,
-    impact: hasStats
-      ? `Launched a production SaaS platform${urlPart}${usersPart}${reqPart}, monetized via a freemium conversion model with account-linked premium access${deployPart}.`
-      : `Launched a production SaaS platform releasing one new tool per week, driving real-user adoption with a freemium conversion model and persistent account-linked premium access.`,
-    academic: hasStats
-      ? `Developed and deployed a production SaaS platform${urlPart}${usersPart}${reqPart} using ${fwText} with role-based feature access${deployPart}.`
-      : `Developed and deployed a production SaaS platform in ${fwText} with a weekly release cadence and role-based feature access.`,
+    technical: "Engineered a production SaaS platform in React/JavaScript, shipping one new tool per week with role-based access control and per-user premium feature gating.",
+    impact:    "Launched a production SaaS platform releasing one new tool per week, driving real-user adoption with a freemium conversion model and persistent account-linked premium access.",
+    academic:  "Developed and deployed a production SaaS platform in React/JavaScript with a weekly release cadence and role-based feature access.",
   };
 
   // Analysis bullet — clean, no buzzwords
@@ -532,8 +517,8 @@ function isServerJobLine(text) {
   return /ihop|first watch|villa peru|server\s*[–\-]/i.test(text);
 }
 
-function applySpecificRewrites(bulletText, angle, stats = {}) {
-  const rewrites = getSpecificRewrites(angle, stats);
+function applySpecificRewrites(bulletText, angle) {
+  const rewrites = getSpecificRewrites(angle);
   for (const { test, out } of rewrites) {
     if (test.test(bulletText)) return out;
   }
@@ -542,7 +527,7 @@ function applySpecificRewrites(bulletText, angle, stats = {}) {
 
 // ─── Variant builder ────────────────────────────────────────────────────────
 
-function buildVariant(resumeText, targetRole, angle, techStack, weakExamples, hasSummary, stats = {}) {
+function buildVariant(resumeText, targetRole, angle, techStack, weakExamples, hasSummary) {
   const originalLines = resumeText.split("\n");
   const upgradedLines = [];
   let inSoftSkills = false;
@@ -640,8 +625,11 @@ function buildVariant(resumeText, targetRole, angle, techStack, weakExamples, ha
       continue;
     }
 
-    // Bullet vs non-bullet
-    if (isBulletLine(trimmed)) {
+    // Bullet vs non-bullet.
+    // A line is a bullet if it has a bullet prefix character OR starts with an action verb.
+    // Using prefix alone so noun-starting bullets ("Freemium…", "Full-stack…") still get rewritten.
+    const hasBulletPrefix = /^[•\-–*]\s/.test(trimmed);
+    if (hasBulletPrefix || isBulletLine(trimmed)) {
       // Skip excess bullets beyond max for non-server jobs
       if (!inServerJob && currentJobBulletCount >= MAX_JOB_BULLETS) {
         lastLineWasBullet = true;
@@ -652,7 +640,7 @@ function buildVariant(resumeText, targetRole, angle, techStack, weakExamples, ha
       const bulletText = trimmed.replace(/^[-*•\u2022]\s*/, "");
 
       // Try specific rewrite first
-      const specific = applySpecificRewrites(bulletText, angle, stats);
+      const specific = applySpecificRewrites(bulletText, angle);
       let upgraded;
       if (specific) {
         upgraded = specific;
@@ -682,6 +670,57 @@ function buildVariant(resumeText, targetRole, angle, techStack, weakExamples, ha
   }
 
   return upgradedLines;
+}
+
+// ─── Smart suggestions ───────────────────────────────────────────────────────
+// Shown after the generated resume. Tells the user what we couldn't infer
+// so they can manually fill in the blanks that make bullets metric-driven.
+
+function buildSuggestions(resumeText) {
+  const suggestions = [];
+  const hasSaasProject = /ackerman|saas\s+platform|multi-app\s+platform|launched\s+a.*platform/i.test(resumeText);
+
+  if (hasSaasProject) {
+    if (!/\b\d+\+?\s*(?:active\s+)?users?\b/i.test(resumeText)) {
+      suggestions.push({
+        field: "Active user count",
+        tip: "Add to your platform bullet — e.g. \"200+ active users\" or \"50+ registered accounts\"",
+      });
+    }
+    if (!/[a-z0-9-]+\.(com|io|dev|app)\b/i.test(resumeText)) {
+      suggestions.push({
+        field: "Live project URL",
+        tip: "Drop it in: \"Deployed at ackermantools.com\" — proves the product is real and running",
+      });
+    }
+    if (!/\d+\+?\s*resumes?\s*(\/|per)\s*week|\d+\+?\s*requests?\s*(\/|per)\s*week/i.test(resumeText)) {
+      suggestions.push({
+        field: "Weekly usage metric",
+        tip: "e.g. \"generating 50+ resumes/week\" — shows traction, not just a deployed side project",
+      });
+    }
+    if (!/vercel|heroku|netlify|railway|render\.com|\baws\b|\bgcp\b/i.test(resumeText)) {
+      suggestions.push({
+        field: "Deployment platform",
+        tip: "e.g. \"deployed on Vercel\" — shows production maturity, not a localhost project",
+      });
+    }
+    if (!/stripe|revenue|\$\d+|paying\s+customer|monetiz/i.test(resumeText)) {
+      suggestions.push({
+        field: "Revenue or Stripe integration",
+        tip: "e.g. \"Stripe-integrated checkout\" — strongest signal for a solo SaaS build if applicable",
+      });
+    }
+  }
+
+  if (/education/i.test(resumeText) && !/relevant coursework|coursework:/i.test(resumeText)) {
+    suggestions.push({
+      field: "Relevant coursework",
+      tip: "Add under your degree: \"Relevant Coursework: Data Structures, Algorithms, Database Systems\"",
+    });
+  }
+
+  return suggestions;
 }
 
 // ─── Public API ──────────────────────────────────────────────────────────────
@@ -717,19 +756,15 @@ function injectCoursework(lines, coursework) {
   return result;
 }
 
-export function buildAllVariants(resumeText = "", targetRole = "", analysis = {}, projectStats = {}) {
+export function buildAllVariants(resumeText = "", targetRole = "", analysis = {}) {
   const techStack = extractTechStack(resumeText);
   const hasSummary = /\b(summary|objective|profile|about me)\b/i.test(resumeText);
   const weakExamples = analysis?.weakExamples || [];
   const missingKeywords = findMissingKeywords(resumeText, targetRole);
-  const alreadyHasCoursework = /relevant coursework/i.test(resumeText);
 
   const makeVariant = (angle) => {
-    let lines = buildVariant(resumeText, targetRole, angle, techStack, weakExamples, hasSummary, projectStats);
+    let lines = buildVariant(resumeText, targetRole, angle, techStack, weakExamples, hasSummary);
     lines = injectKeywordsToSkillsSection(lines, missingKeywords);
-    if (projectStats.coursework && !alreadyHasCoursework) {
-      lines = injectCoursework(lines, projectStats.coursework);
-    }
     return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
   };
 
@@ -755,6 +790,7 @@ export function buildAllVariants(resumeText = "", targetRole = "", analysis = {}
       },
     ],
     missingItems: detectMissingItems(resumeText),
+    suggestions: buildSuggestions(resumeText),
   };
 }
 
