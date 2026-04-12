@@ -679,13 +679,18 @@ function buildVariant(resumeText, targetRole, angle, techStack, weakExamples, ha
 function buildSuggestions(resumeText) {
   const suggestions = [];
 
-  // ── Role detection (non-exclusive — a full-stack dev can trigger both) ──────
-  const isDataScience = /pandas|numpy|scikit|sklearn|tensorflow|pytorch|jupyter|machine learning|neural network|dataset|regression|classification|clustering|matplotlib|seaborn|model accuracy/i.test(resumeText);
-  const isFrontend    = /\breact\b|\bvue\b|\bangular\b|responsive design|css|tailwind|figma|ui\/ux|component|accessibility/i.test(resumeText);
-  const isBackend     = /\bapi\b|endpoint|postgresql|mysql|mongodb|sqlite|express|django|flask|node\.js|rest\b|graphql|microservice|server.side/i.test(resumeText);
-  const hasProjects   = /\bprojects?\b/i.test(resumeText);
-  const hasLiveProject= /deployed|launched|live|production|hosting/i.test(resumeText);
-  const bulletLines   = (resumeText.match(/^[•\-–*].+$/gm) || []).join(" ");
+  // ── Role detection ────────────────────────────────────────────────────────────
+  // Check bullet lines for role signals — avoids triggering on skills section alone.
+  // e.g. listing "Pandas" in Skills doesn't make someone a data scientist; actually
+  // doing data work in bullets does.
+  const bulletLines = (resumeText.match(/^[•\-–*].+$/gm) || []).join(" ");
+  const allContent  = resumeText; // headers/dates/skills also useful for some checks
+
+  const isDataScience = /pandas|numpy|scikit|sklearn|tensorflow|pytorch|jupyter|machine learning|neural network|dataset|regression|classification|clustering|matplotlib|seaborn|model accuracy/i.test(bulletLines);
+  const isFrontend    = /\breact\b|\bvue\b|\bangular\b|responsive design|tailwind|figma|ui\/ux|component|accessibility/i.test(bulletLines);
+  const isBackend     = /\bapi\b|endpoint|postgresql|mysql|mongodb|sqlite|express|django|flask|node\.js|rest\b|graphql|microservice|server.side/i.test(bulletLines);
+  const hasProjects   = /\bprojects?\b/i.test(allContent);
+  const hasLiveProject= /deployed|launched|live\b|production|hosting/i.test(bulletLines);
 
   // ── Universal: contact header ────────────────────────────────────────────────
   if (!/github\.com/i.test(resumeText)) {
@@ -718,7 +723,8 @@ function buildSuggestions(resumeText) {
   }
 
   // ── Universal: bullets need at least one number ──────────────────────────────
-  const metricCount = (resumeText.match(/\b\d+(?:\.\d+)?%|\b\d[\d,]{2,}\b|\b\d+x\b|x\d+\b/g) || []).length;
+  // Only count metrics inside bullet lines — avoids false positives from date years.
+  const metricCount = (bulletLines.match(/\b\d+(?:\.\d+)?%|\$[\d,]+|\b\d+x\b|x\d+\b|\b[1-9]\d{2,}(?!\d)\b/g) || []).length;
   if (metricCount < 2) {
     suggestions.push({
       field: "Almost no measurable proof in bullets",
