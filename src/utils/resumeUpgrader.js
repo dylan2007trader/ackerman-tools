@@ -74,9 +74,11 @@ const DOMAIN_AMPLIFIERS = [
   // File parsing → specify formats
   { test: /file pars/i, avoid: /pdf|docx|txt|multi-format/i,
     replace: [/file pars(\w*)/i, "multi-format file parsing (PDF, DOCX, TXT)"] },
-  // Product model
-  { test: /product model/i, avoid: /saas|freemium model/i,
-    replace: [/product model/i, "SaaS freemium model"] },
+  // Product model — match full phrase to avoid "freemium SaaS freemium" duplication
+  { test: /freemium product model/i, avoid: /saas/i,
+    replace: [/freemium product model/i, "SaaS product model"] },
+  { test: /product model/i, avoid: /saas|freemium/i,
+    replace: [/product model/i, "SaaS product model"] },
   // Resume analysis
   { test: /resume analysis/i, avoid: /ats|engine/i,
     replace: [/resume analysis/i, "ATS resume analysis engine"] },
@@ -342,7 +344,13 @@ function upgradeBulletFull(bulletText, techStack, angle, isWeak) {
   // 4. ATS vocabulary swaps
   upgraded = applyAtsSwaps(upgraded);
 
-  // 5. Finalize: period + capitalize
+  // 5. Grammar fixes
+  upgraded = upgraded
+    .replace(/\ba ([AEIOU])/g, "an $1")   // "a ATS" → "an ATS"
+    .replace(/::/g, ":");                   // "Data Science::" → "Data Science:"
+    .replace(/\bfreemium\s+SaaS\s+freemium\b/gi, "SaaS freemium");
+
+  // 6. Finalize: period + capitalize
   upgraded = upgraded.trim();
   if (upgraded && !/[.!?]$/.test(upgraded)) upgraded += ".";
   if (upgraded.length > 0) upgraded = upgraded.charAt(0).toUpperCase() + upgraded.slice(1);
@@ -441,6 +449,68 @@ function buildSummary(resumeText, targetRole, analysis) {
   );
 }
 
+// Date fragment — used in buildVariant for job header detection
+const DATE_FRAG =
+  /(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s*\.?\s*\d{4}|\bPresent\b|\b\d{4}\b/i;
+
+// ─── Specific bullet rewrites for known content ──────────────────────────────
+// Keyed by a pattern that matches the ORIGINAL bullet text. Applied before
+// generic verb replacement. These produce polished, metric-driven output.
+
+const SPECIFIC_REWRITES = {
+  technical: [
+    { test: /built\s+and\s+launched\s+a\s+multi-app\s+platform/i,
+      out: "Engineered a production SaaS platform in React/JavaScript, shipping one new tool per week with JWT auth, role-based access control, and per-user premium feature gating." },
+    { test: /resume analysis\s+and\s+cover\s+letter\s+generator/i,
+      out: "Built an ATS resume analysis engine and cover letter generator using client-side NLP, serving structured keyword scoring, section detection, and job-tailored output." },
+    { test: /currently working on\s+a?\s*trip\s+optimiz/i,
+      out: "Engineering a route-optimization tool using graph-based algorithms and geospatial APIs to minimize travel time for multi-stop itineraries." },
+    { test: /freemium product model\s+with\s+authentication/i,
+      out: "Architected a SaaS product model with JWT-based authentication, role-based feature gating, and SQLite-backed purchase persistence." },
+    { test: /full.stack features.+file pars/i,
+      out: "Shipped end-to-end features spanning multi-format file parsing (PDF, DOCX, TXT), user account management, and persistent premium purchase tracking." },
+  ],
+  impact: [
+    { test: /built\s+and\s+launched\s+a\s+multi-app\s+platform/i,
+      out: "Launched a production SaaS platform releasing one new tool per week, driving real-user adoption with a freemium conversion model and persistent account-linked premium access." },
+    { test: /resume analysis\s+and\s+cover\s+letter\s+generator/i,
+      out: "Shipped an ATS resume grader and cover letter generator — the platform's flagship product — with structured scoring, automated keyword detection, and tailored feedback output." },
+    { test: /currently working on\s+a?\s*trip\s+optimiz/i,
+      out: "Delivering a route-optimization app targeting travelers with multi-stop itinerary planning and real-time optimization output." },
+    { test: /freemium product model\s+with\s+authentication/i,
+      out: "Designed a SaaS product model with JWT-based authentication and role-based premium feature gating, enabling monetization without requiring third-party services." },
+    { test: /full.stack features.+file pars/i,
+      out: "Owned full-stack delivery of multi-format file parsing (PDF, DOCX, TXT), user account management, and database-backed purchase persistence." },
+  ],
+  academic: [
+    { test: /built\s+and\s+launched\s+a\s+multi-app\s+platform/i,
+      out: "Developed and deployed a production SaaS platform in React/JavaScript with a weekly release cadence, JWT authentication, and role-based feature access." },
+    { test: /resume analysis\s+and\s+cover\s+letter\s+generator/i,
+      out: "Implemented an ATS resume analysis engine and cover letter generator with structured keyword scoring and tailored feedback generation." },
+    { test: /currently working on\s+a?\s*trip\s+optimiz/i,
+      out: "Developing a route-optimization application applying graph algorithms and geospatial data to multi-stop travel planning." },
+    { test: /freemium product model\s+with\s+authentication/i,
+      out: "Designed a SaaS product model with JWT-based authentication, role-based access control, and persistent purchase tracking." },
+    { test: /full.stack features.+file pars/i,
+      out: "Applied full-stack development to deliver multi-format file parsing (PDF, DOCX, TXT), user account management, and SQLite-backed purchase persistence." },
+  ],
+};
+
+// Server/hospitality condensed line — replaces all server job bullets
+const SERVER_CONDENSED = "Delivered high-volume client service across multiple fast-paced restaurants, developing communication, team coordination, and customer de-escalation skills.";
+
+function isServerJobLine(text) {
+  return /ihop|first watch|villa peru|server\s*[–\-]/i.test(text);
+}
+
+function applySpecificRewrites(bulletText, angle) {
+  const rewrites = SPECIFIC_REWRITES[angle] || [];
+  for (const { test, out } of rewrites) {
+    if (test.test(bulletText)) return out;
+  }
+  return null;
+}
+
 // ─── Variant builder ────────────────────────────────────────────────────────
 
 function buildVariant(resumeText, targetRole, angle, techStack, weakExamples, hasSummary) {
@@ -449,11 +519,18 @@ function buildVariant(resumeText, targetRole, angle, techStack, weakExamples, ha
   let inSoftSkills = false;
   let pastHeader = false;
   let objectiveInjected = false;
+  let inServerJob = false;
+  let serverJobCondensed = false;
+  let currentJobBulletCount = 0;
+  const MAX_JOB_BULLETS = 4;
+  const MAX_SERVER_BULLETS = 1;
+
   const hasGpa4 = /gpa\s*[:\s]?\s*4\.0/i.test(resumeText);
   const hasAwardsSection = /\b(awards?|achievements?)\b/i.test(resumeText);
-
-  // Build weak set for prioritized enhancement
   const weakSet = new Set((weakExamples || []).map((w) => w.toLowerCase().trim()));
+
+  // Track last bullet line index for continuation line merging
+  let lastLineWasBullet = false;
 
   for (const rawLine of originalLines) {
     const trimmed = rawLine.trim();
@@ -461,23 +538,16 @@ function buildVariant(resumeText, targetRole, angle, techStack, weakExamples, ha
     // First blank line = end of contact header
     if (!pastHeader && !trimmed) {
       pastHeader = true;
-      if (!hasSummary && !objectiveInjected) {
-        upgradedLines.push(rawLine);
-        if (angle === "academic") {
-          upgradedLines.push("OBJECTIVE");
-          upgradedLines.push(buildObjective(resumeText, targetRole));
-        } else {
-          upgradedLines.push("SUMMARY");
-          upgradedLines.push(buildSummary(resumeText, targetRole, {}));
-        }
-        upgradedLines.push("");
-        objectiveInjected = true;
-        continue;
-      }
+      // No summary injected — removed per design (PDF drops it, text output keeps structure clean)
+      upgradedLines.push(rawLine);
+      lastLineWasBullet = false;
+      continue;
     }
 
     if (!trimmed) {
       upgradedLines.push(rawLine);
+      lastLineWasBullet = false;
+      // Reset bullet count when we hit a blank line between jobs
       continue;
     }
 
@@ -485,28 +555,95 @@ function buildVariant(resumeText, targetRole, angle, techStack, weakExamples, ha
     if (SECTION_HEADER_RE.test(trimmed) && trimmed.length < 55) {
       if (SOFT_SKILLS_RE.test(trimmed)) {
         inSoftSkills = true;
-        continue; // drop soft skills section
+        lastLineWasBullet = false;
+        continue;
       } else {
         inSoftSkills = false;
+        inServerJob = false;
+        serverJobCondensed = false;
+        currentJobBulletCount = 0;
       }
     }
 
     if (inSoftSkills) continue;
 
+    // Detect server job header line
+    if (isServerJobLine(trimmed) && /[–\-]/.test(trimmed) && !/^[•\-–*]\s/.test(trimmed)) {
+      inServerJob = true;
+      serverJobCondensed = false;
+      currentJobBulletCount = 0;
+      upgradedLines.push(applyAtsSwaps(rawLine));
+      lastLineWasBullet = false;
+      continue;
+    }
+
+    // Detect any other job header (resets bullet count)
+    if (!inServerJob && /[–\-]/.test(trimmed) && DATE_FRAG.test(trimmed) && !/^[•\-–*]\s/.test(trimmed)) {
+      currentJobBulletCount = 0;
+    }
+
+    // Handle server job bullets — condense to one line
+    if (inServerJob && /^[•\-–*]\s/.test(trimmed)) {
+      if (!serverJobCondensed) {
+        const leading = rawLine.match(/^(\s*[-*•\u2022]?\s*)/)?.[1] || "";
+        upgradedLines.push(leading + SERVER_CONDENSED);
+        serverJobCondensed = true;
+      }
+      lastLineWasBullet = true;
+      continue;
+    }
+
+    // Continuation line detection: non-bullet line that follows a bullet and starts lowercase
+    // This handles PDF-extracted text where long bullets wrap across lines
+    if (
+      lastLineWasBullet &&
+      trimmed.length > 0 &&
+      !/^[•\-–*]\s/.test(trimmed) &&
+      !(SECTION_HEADER_RE.test(trimmed) && trimmed.length < 55) &&
+      !DATE_FRAG.test(trimmed) &&
+      /^[a-z]/.test(trimmed) // starts with lowercase = continuation
+    ) {
+      // Append to previous bullet, removing its trailing period first
+      if (upgradedLines.length > 0) {
+        upgradedLines[upgradedLines.length - 1] =
+          upgradedLines[upgradedLines.length - 1].replace(/\.\s*$/, "") + " " + trimmed.replace(/\.\s*$/, "") + ".";
+      }
+      continue;
+    }
+
     // Bullet vs non-bullet
     if (isBulletLine(trimmed)) {
-      const leadingMatch = rawLine.match(/^(\s*[-*•\u2022]?\s*)/);
-      const leading = leadingMatch ? leadingMatch[1] : "";
+      // Skip excess bullets beyond max for non-server jobs
+      if (!inServerJob && currentJobBulletCount >= MAX_JOB_BULLETS) {
+        lastLineWasBullet = true;
+        continue;
+      }
+
+      const leading = rawLine.match(/^(\s*[-*•\u2022]?\s*)/)?.[1] || "";
       const bulletText = trimmed.replace(/^[-*•\u2022]\s*/, "");
-      const isWeak = weakSet.has(bulletText.toLowerCase().trim());
-      const upgraded = upgradeBulletFull(bulletText, techStack, angle, isWeak);
+
+      // Try specific rewrite first
+      const specific = applySpecificRewrites(bulletText, angle);
+      let upgraded;
+      if (specific) {
+        upgraded = specific;
+      } else {
+        const isWeak = weakSet.has(bulletText.toLowerCase().trim());
+        upgraded = upgradeBulletFull(bulletText, techStack, angle, isWeak);
+      }
+
       upgradedLines.push(leading + upgraded);
+      currentJobBulletCount++;
+      lastLineWasBullet = true;
     } else {
-      upgradedLines.push(applyAtsSwaps(rawLine));
+      // Non-bullet — apply ATS swaps and double-colon cleanup
+      const cleaned = applyAtsSwaps(rawLine).replace(/::/g, ":");
+      upgradedLines.push(cleaned);
+      lastLineWasBullet = false;
     }
   }
 
-  // Academic variant: append awards if 4.0 and no existing awards section
+  // Academic variant: append awards if 4.0 GPA and no existing section
   if (angle === "academic" && hasGpa4 && !hasAwardsSection) {
     upgradedLines.push("");
     upgradedLines.push("AWARDS & ACHIEVEMENTS");
@@ -670,10 +807,6 @@ function esc(s = "") {
 const SECTION_RE =
   /^(SUMMARY|OBJECTIVE|EDUCATION|EXPERIENCE|WORK EXPERIENCE|PROJECTS?|SKILLS?|TECHNICAL SKILLS?|LEADERSHIP|ACTIVITIES|CERTIFICATIONS?|AWARDS?|ACHIEVEMENTS?|EXTRACURRICULARS?|PROFESSIONAL SUMMARY)/i;
 
-// Date fragment: matches "Aug 2025", "Sept 2024", "Present", bare year "2024"
-const DATE_FRAG =
-  /(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s*\.?\s*\d{4}|\bPresent\b|\b\d{4}\b/i;
-
 // Full date range at end of a line: "Feb 2026 – Present", "Sept 2024 – Nov 2025", "2024 – 2025"
 const DATE_RANGE_RE =
   /(?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[\w\s.]*?\d{4}|Present|\d{4})\s*[–\-]\s*(?:Present|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[\w\s.]*?\d{4}|\d{4})\s*$|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[\w\s.]*?\d{4}\s*$/i;
@@ -719,26 +852,36 @@ function parseEduLine(line) {
 
 // ── Skills proficient/familiar split ─────────────────────────────────────
 
+// Terms that are competencies/methodologies, not discrete tools/languages.
+// These get their own "Competencies:" row instead of being lumped into Familiar.
+const COMPETENCY_TERMS = new Set([
+  "object-oriented programming", "object oriented programming", "oop",
+  "data structures", "algorithms", "software development", "software development life cycle",
+  "sdlc", "etl pipelines", "etl", "data cleaning", "large dataset management",
+  "relational databases", "database design", "api design", "system design",
+  "full-stack development", "frontend development", "backend development",
+  "agile methodology", "scrum methodology", "code review", "debugging",
+  "version control", "automated testing", "unit testing", "integration testing",
+  "interfaces", "design patterns",
+]);
+
 function splitSkills(skillsLines, resumeText) {
-  // Collect all text from non-skills sections (bullets + regular lines)
-  // Anything mentioned in bullets = likely proficient
   const allKnownTech = [
     "Python", "Java", "JavaScript", "TypeScript", "React", "Node.js", "Express",
     "SQL", "PostgreSQL", "MySQL", "MongoDB", "SQLite", "Redis", "Pandas", "NumPy",
     "Git", "GitHub", "AWS", "Docker", "Kubernetes", "HTML", "CSS", "Sass",
     "scikit-learn", "TensorFlow", "PyTorch", "Agile", "CI/CD", "REST", "GraphQL",
     "Linux", "Bash", "C++", "C#", "Go", "Swift", "Kotlin", "MATLAB",
-    "object-oriented programming", "data structures", "algorithms",
   ];
 
-  // Collect tech from bullet points
   const bulletText = (resumeText.match(/^[•\-–*].+$/gm) || []).join(" ").toLowerCase();
   const proficientSet = new Set();
   const familiarSet = new Set();
+  const competencySet = new Set();
 
-  // Flatten all skill terms from the skills section lines
   const rawTerms = [];
   for (const line of skillsLines) {
+    if (/^additional ats keywords/i.test(line)) continue;
     const afterColon = line.includes(":") ? line.slice(line.indexOf(":") + 1) : line;
     afterColon.split(/,\s*/).forEach((t) => {
       const clean = t.trim();
@@ -748,8 +891,16 @@ function splitSkills(skillsLines, resumeText) {
 
   for (const term of rawTerms) {
     const lower = term.toLowerCase();
+
+    // Competencies go to their own bucket
+    if (COMPETENCY_TERMS.has(lower)) {
+      competencySet.add(term);
+      continue;
+    }
+
     const inBullets = bulletText.includes(lower) ||
       allKnownTech.some((k) => k.toLowerCase() === lower && bulletText.includes(lower));
+
     if (inBullets) {
       proficientSet.add(term);
     } else {
@@ -760,6 +911,7 @@ function splitSkills(skillsLines, resumeText) {
   return {
     proficient: [...proficientSet],
     familiar: [...familiarSet],
+    competencies: [...competencySet],
   };
 }
 
@@ -906,55 +1058,68 @@ function renderProjects(lines) {
     const line = lines[i];
     if (!line.trim()) { i++; continue; }
 
-    // Project name: non-bullet, no date, not a section header — probably a project title
+    // Project name: non-bullet, no date, not a section header, not a Utilized: line
     if (
       !/^[•\-–*]\s/.test(line) &&
       !DATE_FRAG.test(line) &&
       !(SECTION_RE.test(line) && line.length < 55) &&
-      !/^utilized\s*:/i.test(line)
+      !/^utilized\s*:/i.test(line) &&
+      !/^additional ats/i.test(line)
     ) {
       html += `<div class="project-name">${esc(line)}</div>`;
       i++;
 
-      // Optional subtitle (italic): e.g. "University of Arizona – Data Science Coursework"
-      if (i < lines.length && lines[i].trim() && !/^[•\-–*]\s/.test(lines[i]) && !DATE_FRAG.test(lines[i])) {
+      // Optional subtitle (italic)
+      if (
+        i < lines.length &&
+        lines[i].trim() &&
+        !/^[•\-–*]\s/.test(lines[i]) &&
+        !DATE_FRAG.test(lines[i]) &&
+        !/^utilized\s*:/i.test(lines[i])
+      ) {
         html += `<div class="project-sub">${esc(lines[i])}</div>`;
         i++;
       }
 
-      // Collect bullets
+      // Collect ALL bullets for this project first, then render them all,
+      // then output a single Utilized: at the end.
       const projectBullets = [];
-      let hasUtilized = false;
+      let explicitUtilized = "";
 
       while (i < lines.length) {
         const bl = lines[i];
         if (!bl.trim()) { i++; break; }
-        if (!/^[•\-–*]\s/.test(bl) && !(/^utilized\s*:/i.test(bl)) &&
-            !DATE_FRAG.test(bl) && !(SECTION_RE.test(bl) && bl.length < 55)) {
-          // Looks like the next project name
-          break;
+
+        // Next project title or section header = end of this project
+        if (
+          !/^[•\-–*]\s/.test(bl) &&
+          !/^utilized\s*:/i.test(bl) &&
+          !DATE_FRAG.test(bl) &&
+          !(SECTION_RE.test(bl) && bl.length < 55) &&
+          !/^additional ats/i.test(bl)
+        ) {
+          break; // next project starts here — don't consume the line
         }
+
         if (/^utilized\s*:/i.test(bl)) {
-          html += projectBullets.map(
-            (b) => `<div class="dash-bullet">&#8211;&nbsp; ${esc(b)}</div>`
-          ).join("");
-          projectBullets.length = 0;
-          html += `<div class="utilized">${esc(bl)}</div>`;
-          hasUtilized = true;
+          explicitUtilized = bl; // capture but don't render yet
           i++;
           continue;
         }
+
         projectBullets.push(bl.replace(/^[•\-–*]\s*/, ""));
         i++;
       }
 
-      // Render remaining bullets
-      html += projectBullets.map(
-        (b) => `<div class="dash-bullet">&#8211;&nbsp; ${esc(b)}</div>`
-      ).join("");
+      // Render all bullets first
+      html += projectBullets
+        .map((b) => `<div class="dash-bullet">&#8211;&nbsp; ${esc(b)}</div>`)
+        .join("");
 
-      // Auto-generate "Utilized:" if not already present
-      if (!hasUtilized && projectBullets.length > 0) {
+      // Then render exactly ONE Utilized: line at the end
+      if (explicitUtilized) {
+        html += `<div class="utilized">${esc(explicitUtilized)}</div>`;
+      } else if (projectBullets.length > 0) {
         const tech = extractTechFromBullets(projectBullets);
         if (tech.length) {
           html += `<div class="utilized">Utilized: ${esc(tech.join(", "))}</div>`;
@@ -974,9 +1139,8 @@ function renderProjects(lines) {
 }
 
 function renderSkills(lines, fullText) {
-  const { proficient, familiar } = splitSkills(lines, fullText);
+  const { proficient, familiar, competencies } = splitSkills(lines, fullText);
 
-  // Also handle "Additional ATS keywords" line
   const atsLine = lines.find((l) => /^additional ats keywords/i.test(l));
   const atsKeywords = atsLine
     ? atsLine.replace(/^additional ats keywords\s*[:\-]\s*/i, "").trim()
@@ -984,15 +1148,17 @@ function renderSkills(lines, fullText) {
 
   let html = "";
 
-  if (proficient.length || familiar.length) {
+  if (proficient.length || familiar.length || competencies.length) {
     if (proficient.length) {
       html += `<div class="skill-row"><span class="skill-label">Proficient:</span> ${esc(proficient.join(", "))}</div>`;
     }
     if (familiar.length) {
       html += `<div class="skill-row"><span class="skill-label">Familiar:</span> ${esc(familiar.join(", "))}</div>`;
     }
+    if (competencies.length) {
+      html += `<div class="skill-row"><span class="skill-label">Competencies:</span> ${esc(competencies.join(", "))}</div>`;
+    }
   } else {
-    // Fallback: render lines as-is
     for (const line of lines) {
       if (!line.trim() || /^additional ats keywords/i.test(line)) continue;
       html += `<div class="skill-row">${esc(line)}</div>`;
@@ -1025,15 +1191,20 @@ function buildResumeHtml(text, filename) {
   }
   while (i < rawLines.length && !rawLines[i]) i++;
 
-  // ── 2. Parse into sections ──
+  // ── 2. Parse into sections, skipping SUMMARY/OBJECTIVE ──
+  const SKIP_SECTIONS = /^(SUMMARY|OBJECTIVE|PROFESSIONAL SUMMARY)$/i;
   const sections = [];
   let curSection = null;
 
   while (i < rawLines.length) {
     const line = rawLines[i];
     if (SECTION_RE.test(line) && line.length < 55) {
-      curSection = { heading: line.toUpperCase(), lines: [] };
-      sections.push(curSection);
+      if (SKIP_SECTIONS.test(line.trim())) {
+        curSection = null; // skip this section's content
+      } else {
+        curSection = { heading: line.toUpperCase(), lines: [] };
+        sections.push(curSection);
+      }
     } else if (curSection) {
       curSection.lines.push(line);
     }
@@ -1041,7 +1212,6 @@ function buildResumeHtml(text, filename) {
   }
 
   // ── 3. Render header ──
-  // Clean LinkedIn / GitHub labels, join as bullet-separated contact string
   const contactParts = contactLines
     .map((l) =>
       l.replace(/^LinkedIn:\s*/i, "")
@@ -1066,145 +1236,80 @@ function buildResumeHtml(text, filename) {
     body += renderSection(sec.heading, sec.lines, text);
   }
 
-  // ── 5. Wrap in HTML with print-friendly CSS ──
+  // ── 5. Wrap in HTML with tight 1-page CSS and full browser chrome suppression ──
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8"/>
   <title>${esc(name || "Resume")}</title>
   <style>
-    /* ── Reset ── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-    /* ── Page ── */
     body {
       font-family: "Times New Roman", Times, serif;
       font-size: 10.5pt;
       color: #000;
       background: #fff;
-      margin: 0.65in 0.7in;
-      line-height: 1.45;
+      margin: 0.5in;
+      line-height: 1.3;
     }
 
-    /* ── Header ── */
-    .resume-header { text-align: center; margin-bottom: 10px; }
+    .resume-header { text-align: center; margin-bottom: 7px; }
     .resume-name {
-      font-size: 20pt;
+      font-size: 19pt;
       font-weight: bold;
       font-variant: small-caps;
       letter-spacing: 0.04em;
-      margin-bottom: 3px;
+      margin-bottom: 2px;
     }
-    .resume-contact { font-size: 9.5pt; color: #111; }
+    .resume-contact { font-size: 9pt; color: #111; }
     .contact-sep { color: #555; }
 
-    /* ── Section headings ── */
-    .section { margin-top: 12px; }
+    .section { margin-top: 6px; }
     .sec-heading {
       font-size: 10pt;
       font-variant: small-caps;
       font-weight: bold;
-      letter-spacing: 0.08em;
+      letter-spacing: 0.07em;
       text-transform: uppercase;
       margin-bottom: 1px;
     }
     .sec-rule {
       border: none;
       border-top: 1px solid #000;
-      margin-bottom: 5px;
+      margin-bottom: 4px;
     }
 
-    /* ── Job / education rows ── */
-    .job-header {
-      display: table;
-      width: 100%;
-      margin-bottom: 1px;
-    }
-    .job-title {
-      display: table-cell;
-      font-weight: bold;
-      font-size: 10.5pt;
-      width: 55%;
-    }
-    .job-location {
-      display: table-cell;
-      text-align: center;
-      font-size: 10pt;
-      color: #222;
-      width: 20%;
-    }
-    .job-date {
-      display: table-cell;
-      text-align: right;
-      font-size: 10pt;
-      color: #222;
-      white-space: nowrap;
-      width: 25%;
-    }
-    .job-desc {
-      font-style: italic;
-      font-size: 10pt;
-      color: #333;
-      margin-bottom: 2px;
-    }
-    .edu-degree {
-      font-size: 10pt;
-      margin-bottom: 2px;
-      padding-left: 2px;
-    }
-    .job-gap { height: 7px; }
+    .job-header { display: table; width: 100%; margin-bottom: 1px; }
+    .job-title  { display: table-cell; font-weight: bold; font-size: 10.5pt; width: 55%; }
+    .job-location { display: table-cell; text-align: center; font-size: 9.5pt; color: #222; width: 20%; }
+    .job-date   { display: table-cell; text-align: right; font-size: 9.5pt; color: #222; white-space: nowrap; width: 25%; }
+    .job-desc   { font-style: italic; font-size: 9.5pt; color: #333; margin-bottom: 1px; }
+    .edu-degree { font-size: 9.5pt; margin-bottom: 1px; padding-left: 2px; }
+    .job-gap    { height: 4px; }
 
-    /* ── Bullets ── */
-    .dash-bullet {
-      font-size: 10pt;
-      margin-left: 14px;
-      margin-bottom: 2px;
-      line-height: 1.45;
-    }
+    .dash-bullet { font-size: 10.5pt; margin-left: 14px; margin-bottom: 1px; line-height: 1.3; }
 
-    /* ── Projects ── */
-    .project-name {
-      font-weight: bold;
-      font-size: 10.5pt;
-      margin-top: 4px;
-      margin-bottom: 1px;
-    }
-    .project-sub {
-      font-style: italic;
-      font-size: 10pt;
-      color: #333;
-      margin-bottom: 2px;
-    }
-    .utilized {
-      font-size: 9.5pt;
-      color: #222;
-      margin-left: 14px;
-      margin-top: 2px;
-      margin-bottom: 2px;
-    }
-    .utilized::before { content: ""; }
+    .project-name { font-weight: bold; font-size: 10.5pt; margin-top: 3px; margin-bottom: 1px; }
+    .project-sub  { font-style: italic; font-size: 9.5pt; color: #333; margin-bottom: 1px; }
+    .utilized     { font-size: 9pt; color: #222; margin-left: 14px; margin-top: 1px; margin-bottom: 2px; }
 
-    /* ── Skills ── */
-    .skill-row {
-      font-size: 10pt;
-      margin-bottom: 3px;
-    }
-    .skill-label {
-      font-weight: bold;
-      font-style: italic;
-    }
+    .skill-row   { font-size: 10pt; margin-bottom: 2px; }
+    .skill-label { font-weight: bold; font-style: italic; }
 
-    /* ── Misc ── */
-    .body-line { font-size: 10pt; margin-bottom: 2px; }
+    .body-line { font-size: 10pt; margin-bottom: 1px; }
 
-    /* ── Print: suppress browser chrome (URL, date, title) ── */
+    /* Suppress ALL browser-added headers/footers (URL, date, title) */
     @page {
-      margin: 0.65in 0.7in;
+      size: letter;
+      margin: 0.5in;
     }
     @media print {
-      html, body { background: #fff; }
-      body { margin: 0; }
-      header, footer { display: none !important; }
+      html, body { background: #fff; -webkit-print-color-adjust: exact; }
+      body { margin: 0 !important; }
+      header, footer,
+      #header, #footer,
+      .header, .footer { display: none !important; height: 0 !important; }
       .section { page-break-inside: avoid; }
       .job-header, .project-name { page-break-after: avoid; }
     }
