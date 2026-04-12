@@ -322,6 +322,106 @@ function applyAtsSwaps(text) {
   return r;
 }
 
+// ─── Bullet expansion ────────────────────────────────────────────────────────
+// When a bullet is still short/vague after all other upgrades, append a
+// contextually appropriate technical tail clause based on what the bullet
+// is about. Only fires if the bullet is under the length threshold AND the
+// bullet doesn't already contain the concepts we'd add.
+
+const EXPANSION_RULES = [
+  // Auth / login / accounts
+  { test: /\b(auth|login|sign[\s-]?in|register|signup|user account)\b/i,
+    avoid: /jwt|oauth|bcrypt|hash|session|token|credential|permission/i,
+    tail: ", implementing secure credential hashing, session management, and token-based access control" },
+
+  // Database / storage / schema
+  { test: /\b(database|db storage|data store|persistence)\b/i,
+    avoid: /schema|normalized|relational|crud|quer|index|foreign key/i,
+    tail: " with a normalized relational schema, indexed queries, and full CRUD operation support" },
+
+  // REST API / backend service
+  { test: /\brest api\b|\bapi endpoint|\bbackend api\b/i,
+    avoid: /json|http method|middleware|route|status code/i,
+    tail: " with RESTful routing, JSON response formatting, and error-handling middleware" },
+
+  // Generic API (less specific than above)
+  { test: /\bbuilt\s+an?\s+(api|service|server)\b|\bcreated\s+an?\s+(api|service|server)\b/i,
+    avoid: /rest|endpoint|route|json|middleware/i,
+    tail: " serving structured JSON responses with authentication, validation, and error handling" },
+
+  // Machine learning / model training
+  { test: /\b(machine learning|ml model|train\w*\s+a\s+model|classification model|regression model)\b/i,
+    avoid: /accuracy|metric|f1|dataset|sample|cross.valid|evaluat/i,
+    tail: ", evaluating performance using cross-validation, precision, and recall metrics on labeled data" },
+
+  // Data analysis / processing
+  { test: /\b(analyz|data analysis|data processing|exploratory)\b/i,
+    avoid: /insight|trend|visuali|pandas|numpy|matplotlib|correlation/i,
+    tail: " using Python (Pandas, NumPy) to identify trends, outliers, and actionable insights" },
+
+  // ETL / data pipeline
+  { test: /\b(etl|data pipeline|data ingestion|data cleaning)\b/i,
+    avoid: /automat|schedul|transform|output|structur/i,
+    tail: " with automated extraction, transformation, and structured output for downstream consumption" },
+
+  // Dashboard / data visualization
+  { test: /\b(dashboard|data visualization|chart|graph|report)\b/i,
+    avoid: /interactiv|real.time|filter|drill.down|export/i,
+    tail: " with interactive filters, real-time data updates, and exportable views" },
+
+  // Frontend / UI / component
+  { test: /\b(ui|user interface|frontend component|web interface)\b/i,
+    avoid: /responsive|accessib|state management|re-render|performance|cross.browser/i,
+    tail: " with responsive layout, accessible markup, and optimized re-render performance" },
+
+  // Full-stack web app (generic)
+  { test: /\b(web app|web application|full.stack app|full stack app)\b/i,
+    avoid: /component|rest|api|deploy|client.server|responsive/i,
+    tail: " with a React frontend, REST API backend, and persistent database layer" },
+
+  // Generic website
+  { test: /\b(website|web site)\b/i,
+    avoid: /responsive|component|full.stack|deploy|host/i,
+    tail: " using a component-based architecture with responsive design and cross-browser compatibility" },
+
+  // Automation / scripting
+  { test: /\b(automat\w+|script\w+|bot|cron job)\b/i,
+    avoid: /reduc|sav\w+|hour|minute|workflow|manual/i,
+    tail: ", eliminating manual overhead and reducing repetitive processing time" },
+
+  // SQL / queries
+  { test: /\b(sql quer|wrote queries|database queries)\b/i,
+    avoid: /complex|multi.table|join|index|optim|aggregat/i,
+    tail: " including multi-table JOINs, aggregations, and indexed lookups for performance" },
+
+  // Testing
+  { test: /\b(unit test|wrote tests|test suite|integration test)\b/i,
+    avoid: /coverage|%|edge case|ci|pass rate|mock/i,
+    tail: " covering edge cases, mocked dependencies, and achieving consistent CI pass rates" },
+
+  // Mobile app
+  { test: /\b(mobile app|ios app|android app|react native)\b/i,
+    avoid: /push notification|offline|store|publish|native/i,
+    tail: " with offline support, responsive UI, and platform-specific UX patterns" },
+
+  // CLI / command-line tool
+  { test: /\b(cli|command.line tool|command line app)\b/i,
+    avoid: /flag|argument|stdin|stdout|pipe/i,
+    tail: " with configurable flags, stdin/stdout piping, and structured output formatting" },
+];
+
+const MIN_BULLET_LENGTH = 90; // chars below which we attempt expansion
+
+function expandBullet(text) {
+  if (text.replace(/[.!?]\s*$/, "").length >= MIN_BULLET_LENGTH) return text;
+  for (const { test, avoid, tail } of EXPANSION_RULES) {
+    if (test.test(text) && !avoid.test(text)) {
+      return text.replace(/[.!?]\s*$/, "") + tail + ".";
+    }
+  }
+  return text;
+}
+
 function upgradeBulletFull(bulletText, techStack, angle, isWeak) {
   let upgraded = bulletText;
 
@@ -346,11 +446,14 @@ function upgradeBulletFull(bulletText, techStack, angle, isWeak) {
 
   // 5. Grammar fixes
   upgraded = upgraded
-    .replace(/\ba ([AEIOU])/g, "an $1")   // "a ATS" → "an ATS"
-    .replace(/::/g, ":")                    // "Data Science::" → "Data Science:"
+    .replace(/\ba ([AEIOU])/g, "an $1")
+    .replace(/::/g, ":")
     .replace(/\bfreemium\s+SaaS\s+freemium\b/gi, "SaaS freemium");
 
-  // 6. Finalize: period + capitalize
+  // 6. Expand bare bullets — add technical context if still too short
+  upgraded = expandBullet(upgraded);
+
+  // 7. Finalize: period + capitalize
   upgraded = upgraded.trim();
   if (upgraded && !/[.!?]$/.test(upgraded)) upgraded += ".";
   if (upgraded.length > 0) upgraded = upgraded.charAt(0).toUpperCase() + upgraded.slice(1);
