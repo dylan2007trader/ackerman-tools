@@ -1,64 +1,26 @@
-const COMMON_SKILLS = [
-  "Python",
-  "Java",
-  "JavaScript",
-  "TypeScript",
-  "React",
-  "Node.js",
-  "Express",
-  "SQL",
-  "PostgreSQL",
-  "MySQL",
-  "SQLite",
-  "MongoDB",
-  "Git",
-  "GitHub",
-  "REST",
-  "APIs",
-  "backend",
-  "frontend",
-  "full-stack",
-  "data structures",
-  "algorithms",
-  "object-oriented programming",
-  "testing",
-  "automation",
-  "AWS",
-  "Docker",
-  "Linux",
-  "Pandas",
-  "NumPy",
-  "ETL",
-  "databases",
-  "cloud",
-  "Agile",
-  ".NET",
-  ".NET Core",
-  "Angular",
-  "HTML",
-  "CSS",
-];
+const Anthropic = require("@anthropic-ai/sdk");
+
+// ─── Anthropic client ────────────────────────────────────────────────────────
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const MODEL = "claude-haiku-4-5-20251001";
+
+// ─── Shared helpers ──────────────────────────────────────────────────────────
 
 const ACTION_VERBS = [
-  "built",
-  "developed",
-  "designed",
-  "created",
-  "implemented",
-  "led",
-  "managed",
-  "wrote",
-  "optimized",
-  "delivered",
-  "analyzed",
-  "engineered",
-  "launched",
-  "improved",
-  "co-founded",
-  "resolved",
-  "supported",
-  "automated",
-  "maintained",
+  "built", "developed", "designed", "created", "implemented", "led",
+  "managed", "wrote", "optimized", "delivered", "analyzed", "engineered",
+  "launched", "improved", "co-founded", "resolved", "supported",
+  "automated", "maintained",
+];
+
+const COMMON_SKILLS = [
+  "Python", "Java", "JavaScript", "TypeScript", "React", "Node.js", "Express",
+  "SQL", "PostgreSQL", "MySQL", "SQLite", "MongoDB", "Git", "GitHub", "REST",
+  "APIs", "backend", "frontend", "full-stack", "data structures", "algorithms",
+  "object-oriented programming", "testing", "automation", "AWS", "Docker",
+  "Linux", "Pandas", "NumPy", "ETL", "databases", "cloud", "Agile",
+  ".NET", ".NET Core", "Angular", "HTML", "CSS",
 ];
 
 function normalizeWhitespace(value = "") {
@@ -70,20 +32,7 @@ function normalizeWhitespace(value = "") {
 }
 
 function cleanLine(value = "") {
-  return normalizeWhitespace(
-    String(value || "").replace(/^[-*•\u2022\s]+/, "")
-  );
-}
-
-function ensureSentence(value = "") {
-  const clean = normalizeWhitespace(value);
-  if (!clean) return "";
-  const first = clean.charAt(0).toUpperCase() + clean.slice(1);
-  return /[.!?]$/.test(first) ? first : `${first}.`;
-}
-
-function unique(values = []) {
-  return [...new Set(values.filter(Boolean))];
+  return normalizeWhitespace(String(value || "").replace(/^[-*•\u2022\s]+/, ""));
 }
 
 function extractLines(text = "") {
@@ -93,12 +42,19 @@ function extractLines(text = "") {
     .filter(Boolean);
 }
 
-function listToPhrase(items = []) {
-  const clean = unique(items);
-  if (clean.length === 0) return "technical fundamentals";
-  if (clean.length === 1) return clean[0];
-  if (clean.length === 2) return `${clean[0]} and ${clean[1]}`;
-  return `${clean.slice(0, -1).join(", ")}, and ${clean[clean.length - 1]}`;
+function unique(values = []) {
+  return [...new Set(values.filter(Boolean))];
+}
+
+function extractSkills(text = "") {
+  const lower = normalizeWhitespace(text).toLowerCase();
+  return unique(COMMON_SKILLS.filter((skill) => lower.includes(skill.toLowerCase())));
+}
+
+function detectBullets(lines = []) {
+  return lines.filter((line) =>
+    ACTION_VERBS.some((verb) => line.toLowerCase().startsWith(verb))
+  );
 }
 
 function titleCase(text = "") {
@@ -112,19 +68,6 @@ function titleCase(text = "") {
     .join(" ");
 }
 
-function extractSkills(text = "") {
-  const lower = normalizeWhitespace(text).toLowerCase();
-  return unique(
-    COMMON_SKILLS.filter((skill) => lower.includes(skill.toLowerCase()))
-  );
-}
-
-function detectBullets(lines = []) {
-  return lines.filter((line) =>
-    ACTION_VERBS.some((verb) => line.toLowerCase().startsWith(verb))
-  );
-}
-
 function extractContact(text = "") {
   const lines = extractLines(text);
   const header = lines.slice(0, 6);
@@ -136,16 +79,9 @@ function extractContact(text = "") {
     }) || "Applicant";
 
   const headerText = header.join(" ");
-  const email =
-    headerText.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0] || "";
-  const phone =
-    headerText.match(
-      /(\+?1[-.\s]?)?(\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})/
-    )?.[0] || "";
-  const location =
-    header.find(
-      (line) => /,\s*[A-Z]{2}\b/.test(line) || /remote/i.test(line)
-    ) || "";
+  const email = headerText.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0] || "";
+  const phone = headerText.match(/(\+?1[-.\s]?)?(\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})/)?.[0] || "";
+  const location = header.find((line) => /,\s*[A-Z]{2}\b/.test(line) || /remote/i.test(line)) || "";
   const linkedIn = header.find((line) => /linkedin\.com/i.test(line)) || "";
 
   return {
@@ -158,98 +94,7 @@ function extractContact(text = "") {
   };
 }
 
-function extractEducation(text = "") {
-  const lines = extractLines(text);
-  return (
-    lines.find((line) =>
-      /university|college|bachelor|master|degree|minor|gpa/i.test(line)
-    ) || "computer science student with a practical, project-based foundation"
-  );
-}
-
-function rewriteBullet(line = "") {
-  return ensureSentence(
-    cleanLine(line)
-      .replace(/^built co-founded/i, "Co-founded and built")
-      .replace(/^built contributed to to/i, "Contributed to")
-      .replace(/^built supported with/i, "Supported")
-      .replace(/with emphasis on [^.]+/i, "")
-      .replace(/including /i, "")
-      .replace(/\s{2,}/g, " ")
-      .trim()
-  );
-}
-
-function extractEvidence(text = "") {
-  const lines = extractLines(text);
-  const bullets = detectBullets(lines).map(rewriteBullet);
-  const projectish = lines
-    .filter((line) =>
-      /project|platform|database|application|software|api|tool|etl|analysis|system/i.test(
-        line
-      )
-    )
-    .map((line) => ensureSentence(line));
-  return unique([...bullets, ...projectish]).slice(0, 8);
-}
-
-function groupSkills(skills = []) {
-  const languages = skills.filter((skill) =>
-    [
-      "python",
-      "java",
-      "javascript",
-      "typescript",
-      "sql",
-      "html",
-      "css",
-    ].includes(skill.toLowerCase())
-  );
-  const frameworks = skills.filter((skill) =>
-    [
-      "react",
-      "node.js",
-      "express",
-      "apis",
-      "rest",
-      "backend",
-      "frontend",
-      "pandas",
-      "numpy",
-    ].includes(skill.toLowerCase())
-  );
-  const systems = skills.filter((skill) =>
-    [
-      "git",
-      "databases",
-      "aws",
-      "docker",
-      "linux",
-      "etl",
-      "sqlite",
-      "postgresql",
-      "mysql",
-    ].includes(skill.toLowerCase())
-  );
-  const concepts = skills.filter((skill) =>
-    [
-      "data structures",
-      "algorithms",
-      "object-oriented programming",
-      "automation",
-      "testing",
-      "cloud",
-      "agile",
-    ].includes(skill.toLowerCase())
-  );
-
-  return [
-    { label: "Languages", value: languages },
-    { label: "Frameworks and Tools", value: frameworks },
-    { label: "Systems and Data", value: systems },
-    { label: "Core Concepts", value: concepts },
-  ].filter((group) => group.value.length > 0);
-}
+// ─── Resume grader (still rule-based — no LLM needed for scoring) ────────────
 
 function analyzeResumeText(text = "", targetRole = "") {
   const resumeText = normalizeWhitespace(text);
@@ -257,12 +102,9 @@ function analyzeResumeText(text = "", targetRole = "") {
   const words = resumeText.split(/\s+/).filter(Boolean);
   const bullets = detectBullets(lines);
   const skills = extractSkills(resumeText);
-  const metricMatches =
-    resumeText.match(/\b\d+(?:\.\d+)?%|\$\d+|\b\d+\b/g) || [];
+  const metricMatches = resumeText.match(/\b\d+(?:\.\d+)?%|\$\d+|\b\d+\b/g) || [];
   const sectionMatches = lines.filter((line) =>
-    /summary|education|experience|projects|skills|technical|leadership/i.test(
-      line
-    )
+    /summary|education|experience|projects|skills|technical|leadership/i.test(line)
   );
   const actionVerbCount = bullets.filter((line) =>
     ACTION_VERBS.some((verb) => line.toLowerCase().startsWith(verb))
@@ -272,17 +114,14 @@ function analyzeResumeText(text = "", targetRole = "") {
   const skillScore = Math.min(100, skills.length * 12 + 20);
   const bulletScore = Math.min(100, actionVerbCount * 14 + 10);
   const structureScore = Math.min(100, sectionMatches.length * 18 + 20);
-  const completenessScore = Math.min(
-    100,
-    Math.round((words.length / 220) * 100)
-  );
+  const completenessScore = Math.min(100, Math.round((words.length / 220) * 100));
 
   const overall = Math.round(
     metricsScore * 0.22 +
-      skillScore * 0.28 +
-      bulletScore * 0.22 +
-      structureScore * 0.18 +
-      completenessScore * 0.1
+    skillScore * 0.28 +
+    bulletScore * 0.22 +
+    structureScore * 0.18 +
+    completenessScore * 0.1
   );
 
   const targetSignals = extractSkills(targetRole);
@@ -290,302 +129,95 @@ function analyzeResumeText(text = "", targetRole = "") {
     skills.filter((skill) =>
       targetSignals.length === 0
         ? true
-        : targetSignals.some(
-            (signal) => signal.toLowerCase() === skill.toLowerCase()
-          )
+        : targetSignals.some((signal) => signal.toLowerCase() === skill.toLowerCase())
     )
   );
-
   const missingSignals = targetSignals.filter(
-    (signal) =>
-      !matchedSignals.find(
-        (match) => match.toLowerCase() === signal.toLowerCase()
-      )
+    (signal) => !matchedSignals.find((match) => match.toLowerCase() === signal.toLowerCase())
   );
 
-  return {
-    overall,
-    words: words.length,
-    bullets: bullets.length,
-    skills,
-    metricsCount: metricMatches.length,
-    matchedSignals,
-    missingSignals,
-  };
+  return { overall, words: words.length, bullets: bullets.length, skills, metricsCount: metricMatches.length, matchedSignals, missingSignals };
 }
 
-function buildPremiumResume({ resumeText = "", targetRole = "" }) {
+// ─── Premium resume (Claude-powered) ─────────────────────────────────────────
+
+async function buildPremiumResume({ resumeText = "", targetRole = "" }) {
   const analysis = analyzeResumeText(resumeText, targetRole);
-  const lines = extractLines(resumeText);
-  const contact = extractContact(resumeText);
-  const education = extractEducation(resumeText);
-  const skills = analysis.skills.length
-    ? analysis.skills
-    : extractSkills(resumeText);
-  const groupedSkills = groupSkills(skills);
-  const bullets = detectBullets(lines)
-    .slice(0, 8)
-    .map((line) => rewriteBullet(line));
-  const projectLines = lines
-    .filter((line) =>
-      /project|database|platform|application|tool|etl|api|analysis|system/i.test(
-        line
-      )
-    )
-    .slice(0, 4)
-    .map((line) => ensureSentence(line));
 
-  const roleLine =
-    targetRole ||
-    "technical roles in software, data, backend, and web development";
-  const summary = [
-    ensureSentence(
-      `Candidate targeting ${roleLine} and bringing a practical foundation from ${education.replace(
-        /\.$/,
-        ""
-      )}`
-    ),
-    ensureSentence(
-      `Core technical strengths include ${listToPhrase(skills.slice(0, 6))}`
-    ),
-    ensureSentence(
-      "Best positioned for teams that want a coachable builder who can write cleaner code, contribute early, and grow into larger ownership"
-    ),
-  ];
+  const userMessage = targetRole
+    ? `TARGET ROLE: ${targetRole}\n\nRESUME:\n${resumeText}`
+    : `RESUME:\n${resumeText}`;
 
-  const output = [];
-  output.push(contact.name);
-  if (contact.headerLine) output.push(contact.headerLine);
-  if (contact.linkedIn) output.push(contact.linkedIn);
-  output.push("");
-  output.push("PROFESSIONAL SUMMARY");
-  summary.forEach((line) => output.push(line));
-  output.push("");
-  output.push("TECHNICALLY RELEVANT SKILLS");
-  if (groupedSkills.length) {
-    groupedSkills.forEach((group) =>
-      output.push(`${group.label}: ${group.value.join(", ")}`)
-    );
-  } else {
-    output.push(
-      "Languages and Tools: Add clearer technical stack wording to strengthen this section."
-    );
-  }
-  output.push("");
-  output.push("EDUCATION");
-  output.push(education);
-  output.push("");
-  output.push("EXPERIENCE HIGHLIGHTS");
-  if (bullets.length) {
-    bullets.forEach((bullet) => output.push(`• ${bullet}`));
-  } else {
-    output.push(
-      "• Add stronger project or work bullets here so the upgraded version can sell your impact faster."
-    );
-  }
-  if (projectLines.length) {
-    output.push("");
-    output.push("PROJECT SIGNALS");
-    projectLines.forEach((line) => output.push(`• ${line}`));
-  }
-  if (analysis.missingSignals.length) {
-    output.push("");
-    output.push("KEYWORDS TO WEAVE IN FOR TARGET ROLES");
-    output.push(analysis.missingSignals.join(", "));
-  }
+  const message = await anthropic.messages.create({
+    model: MODEL,
+    max_tokens: 2048,
+    system:
+      "You are a professional resume writer. Rewrite the provided resume with stronger action verbs, expanded bullet points with measurable metrics, and enough detail to fill a full page. Keep all facts accurate — only expand and improve what is already there. Return the result as plain structured text with clear section headers.",
+    messages: [{ role: "user", content: userMessage }],
+  });
 
-  return {
-    analysis,
-    premiumResume: output
-      .join("\n")
-      .replace(/\n{3,}/g, "\n\n")
-      .trim(),
-  };
+  const premiumResume = message.content
+    .filter((block) => block.type === "text")
+    .map((block) => block.text)
+    .join("")
+    .trim();
+
+  return { analysis, premiumResume };
 }
 
-function extractJobTitle(jobDescription = "", fallbackRole = "") {
-  const lines = extractLines(jobDescription);
-  if (fallbackRole) return titleCase(fallbackRole);
-  const firstGoodLine =
-    lines.find((line) =>
-      /engineer|developer|analyst|intern|scientist|specialist|manager/i.test(
-        line
-      )
-    ) || "";
-  if (firstGoodLine && firstGoodLine.length < 90) return firstGoodLine;
-  return "Software engineering role";
-}
+// ─── Cover letter (Claude-powered) ───────────────────────────────────────────
 
-function extractCompanyName(jobDescription = "") {
-  const lines = extractLines(jobDescription);
-  const labeled = lines.find((line) => /^company\s*:/i.test(line));
-  if (labeled) return labeled.replace(/^company\s*:/i, "").trim();
-  const atMatch = normalizeWhitespace(jobDescription).match(
-    /\bat\s+([A-Z][A-Za-z0-9& .-]{2,50})/
-  );
-  return atMatch?.[1]?.trim() || "";
-}
-
-function extractJobFocus(jobDescription = "") {
-  const lines = extractLines(jobDescription);
-  return (
-    lines.find((line) => {
-      if (line.length < 35 || line.length > 180) return false;
-      if (/benefits|salary|compensation|equal opportunity|perks/i.test(line))
-        return false;
-      return /build|develop|design|support|improve|maintain|power|workflow|platform|service|software|application|system/i.test(
-        line
-      );
-    }) || ""
-  );
-}
-
-function extractRequestedSkills(jobDescription = "", targetRole = "") {
-  return unique([
-    ...extractSkills(jobDescription),
-    ...extractSkills(targetRole),
-  ]).slice(0, 8);
-}
-
-function sentencePoolForRole(
-  role,
-  company,
-  focusSentence,
-  requestedSkills,
-  education
-) {
-  const skillPhrase = listToPhrase(requestedSkills.slice(0, 5));
-  const companyText = company ? ` at ${company}` : "";
-  return [
-    ensureSentence(`I am excited to apply for the ${role}${companyText}`),
-    ensureSentence(
-      focusSentence
-        ? `What stands out to me about this opportunity is the chance to ${focusSentence
-            .replace(/^you will\s+/i, "")
-            .replace(/[.:]+$/g, "")}`
-        : "What stands out to me about this opportunity is the combination of meaningful technical work and room to keep growing as an engineer"
-    ),
-    ensureSentence(
-      `From the description, it is clear that your team values ${skillPhrase}`
-    ),
-    ensureSentence(
-      `My background in ${education.replace(
-        /\.$/,
-        ""
-      )} has prepared me to contribute in a role where strong fundamentals and steady execution both matter`
-    ),
-    ensureSentence(
-      "It is the kind of role where I can bring curiosity, coachability, and consistent effort from day one"
-    ),
-  ];
-}
-
-function sentencePoolForExperience(education, evidence, resumeSkills) {
-  const cleanEvidence = evidence.slice(0, 3);
-  while (cleanEvidence.length < 3) {
-    cleanEvidence.push(
-      "I have continued strengthening my technical foundation through coursework, projects, and hands-on problem solving."
-    );
-  }
-
-  return [
-    ensureSentence(
-      `My resume reflects the kind of work I would bring into this position, combining ${education.replace(
-        /\.$/,
-        ""
-      )} with hands-on technical projects`
-    ),
-    cleanEvidence[0],
-    cleanEvidence[1],
-    cleanEvidence[2],
-    ensureSentence(
-      `Across that work, I have kept building around ${listToPhrase(
-        resumeSkills.slice(0, 5)
-      )}`
-    ),
-  ];
-}
-
-function sentencePoolForValue(requestedSkills, resumeSkills, company) {
-  const matched = unique(
-    resumeSkills.filter((skill) =>
-      requestedSkills.some(
-        (wanted) => wanted.toLowerCase() === skill.toLowerCase()
-      )
-    )
-  );
-  const finalSkills = matched.length ? matched : resumeSkills.slice(0, 5);
-  const companyText = company || "your team";
-
-  return [
-    ensureSentence(
-      `That background would let me contribute in the areas ${companyText} cares about most, especially ${listToPhrase(
-        requestedSkills.slice(0, 5)
-      )}`
-    ),
-    ensureSentence(
-      `I would bring ${listToPhrase(
-        finalSkills.slice(0, 5)
-      )}, along with strong communication, follow-through, and a willingness to learn quickly`
-    ),
-    ensureSentence(
-      "Just as important, I know how to turn technical work into output that feels clear, dependable, and easier for a team to trust and build on"
-    ),
-    ensureSentence(
-      "I would approach the role with a bias toward listening well, contributing early, and steadily taking on more ownership as I grow"
-    ),
-    ensureSentence(
-      `I would be excited to bring that value to ${companyText} while supporting work that is practical, thoughtful, and ready to scale`
-    ),
-  ];
-}
-
-function buildStructuredCoverLetter({
+async function buildStructuredCoverLetter({
   resumeText = "",
   jobDescription = "",
   targetRole = "",
 }) {
   const contact = extractContact(resumeText);
-  const education = extractEducation(resumeText);
-  const evidence = extractEvidence(resumeText);
-  const resumeSkills = extractSkills(resumeText);
-  const requestedSkills = extractRequestedSkills(jobDescription, targetRole);
-  const role = extractJobTitle(
-    jobDescription,
-    targetRole || "Software Engineer"
-  );
-  const company = extractCompanyName(jobDescription);
-  const focusSentence = extractJobFocus(jobDescription);
 
-  const bodyParagraphs = [
-    sentencePoolForRole(
-      role,
-      company,
-      focusSentence,
-      requestedSkills,
-      education
-    ).join(" "),
-    sentencePoolForExperience(education, evidence, resumeSkills).join(" "),
-    sentencePoolForValue(requestedSkills, resumeSkills, company).join(" "),
-  ];
+  const userMessage = [
+    `RESUME:\n${resumeText}`,
+    targetRole ? `TARGET ROLE: ${targetRole}` : "",
+    jobDescription ? `JOB DESCRIPTION:\n${jobDescription}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  const message = await anthropic.messages.create({
+    model: MODEL,
+    max_tokens: 1024,
+    system:
+      "You are a professional cover letter writer. Using the provided resume and job details, write a compelling one-page cover letter. Open with a strong hook, highlight 2-3 relevant achievements from the resume, connect them to the company's needs, and close with a confident call to action. Match the tone to the job seniority level. Return plain text only — no greetings like 'Dear Claude', no markdown, just the cover letter body paragraphs starting from the opening sentence.",
+    messages: [{ role: "user", content: userMessage }],
+  });
+
+  const bodyText = message.content
+    .filter((block) => block.type === "text")
+    .map((block) => block.text)
+    .join("")
+    .trim();
+
+  // Split Claude's output into paragraphs for the structured letter format
+  const bodyParagraphs = bodyText
+    .split(/\n{2,}/)
+    .map((p) => p.replace(/\n/g, " ").trim())
+    .filter(Boolean);
 
   return {
     headerName: contact.name,
-    headerLine: [contact.location, contact.phone, contact.email]
-      .filter(Boolean)
-      .join(" • "),
+    headerLine: [contact.location, contact.phone, contact.email].filter(Boolean).join(" • "),
     linkedIn: contact.linkedIn,
     dateLine: new Date().toLocaleDateString("en-US"),
     companyLine: "Hiring Team",
-    companyName: company,
+    companyName: "",
     companyLocation: "",
     greeting: "Dear Hiring Team,",
     bodyParagraphs,
-    closing:
-      "Thank you for considering my application. I would welcome the opportunity to discuss how I can contribute to your team.",
+    closing: "Thank you for considering my application. I would welcome the opportunity to discuss how I can contribute to your team.",
     signature: contact.name,
   };
 }
+
+// ─── Cover letter plain-text formatter ───────────────────────────────────────
 
 function buildCoverLetterText(letter) {
   const lines = [];

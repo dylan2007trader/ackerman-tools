@@ -500,7 +500,7 @@ app.post(
           .json({ ok: false, message: "Paste a resume first." });
       }
 
-      const result = buildPremiumResume({ resumeText, targetRole });
+      const result = await buildPremiumResume({ resumeText, targetRole });
       return res.json({
         ok: true,
         premiumResume: result.premiumResume,
@@ -539,7 +539,7 @@ app.post(
           });
       }
 
-      const letter = buildStructuredCoverLetter({
+      const letter = await buildStructuredCoverLetter({
         resumeText,
         targetRole,
         jobDescription,
