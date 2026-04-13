@@ -294,8 +294,8 @@ const STRONG_VERB_STARTS = [
 ];
 
 const SECTION_HEADER_RE =
-  /^(education|experience|work experience|projects?|skills?|technical skills?|soft skills?|leadership|activities|certifications?|awards?|achievements?|summary|objective|profile|extracurriculars?)/i;
-const SOFT_SKILLS_RE = /^soft skills?$/i;
+  /^(education|experience|work experience|projects?|skills?|technical skills?|soft skills?|strengths?|personal strengths?|leadership|activities|certifications?|awards?|achievements?|summary|objective|profile|extracurriculars?)/i;
+const SOFT_SKILLS_RE = /^(soft skills?|strengths?|personal strengths?)$/i;
 
 function isBulletLine(trimmed) {
   const noBullet = trimmed.replace(/^[-*•\u2022]\s*/, "").trim();
@@ -410,7 +410,7 @@ const EXPANSION_RULES = [
     tail: " with configurable flags, stdin/stdout piping, and structured output formatting" },
 ];
 
-const MIN_BULLET_LENGTH = 90; // chars below which we attempt expansion
+const MIN_BULLET_LENGTH = 130; // chars below which we attempt expansion — aim for full, detailed bullets
 
 function expandBullet(text) {
   if (text.replace(/[.!?]\s*$/, "").length >= MIN_BULLET_LENGTH) return text;
@@ -422,10 +422,212 @@ function expandBullet(text) {
   return text;
 }
 
+// ─── Angle-specific expansion ────────────────────────────────────────────────
+// Each rule has three tails — technical (HOW built), impact (WHAT achieved),
+// academic (WHAT principles applied). This makes the three variants genuinely
+// differ in content, not just in the opening verb.
+
+const ANGLE_EXPANSION_RULES = [
+  {
+    test: /\b(full.stack|react application|react app)\b/i,
+    avoid: /node|api layer|express|backend|server|sqlite|data layer|persistent/i,
+    tails: {
+      technical: ", backed by a Node.js/Express REST API, component-based React frontend with custom hooks and context, and a persistent SQLite data layer — all version-controlled with Git and deployed end-to-end",
+      impact:    ", enabling a consistent weekly release schedule that drove repeat visits, showcased continuous delivery skills, and demonstrated the ability to ship production software independently",
+      academic:  ", applying component-based architecture, client-server communication via REST, state management with React Context, and software design principles including separation of concerns and modularity",
+    },
+  },
+  {
+    test: /\b(reusable component|component architecture|scalable component|react component)\b/i,
+    avoid: /hook|context|memo|composition|prop.driven|single.responsib|separation/i,
+    tails: {
+      technical: " using prop-driven composition, custom hooks for shared logic, and React.memo for render optimization — reducing bundle size and improving performance across the component tree",
+      impact:    " that cut duplicate UI code by consolidating shared patterns, enabling faster feature iterations and consistent visual design across all pages of the application",
+      academic:  " applying the single-responsibility principle, React's composition model, and software design patterns to build a maintainable, extensible front-end architecture",
+    },
+  },
+  {
+    test: /\b(resume|grading tool|resume tool|grader|scoring)\b/i,
+    avoid: /ats|keyword detection|section pars|weighted|actionable/i,
+    tails: {
+      technical: " with ATS keyword detection, regex-based section parsing, and a weighted scoring algorithm that surfaces targeted, role-specific improvement suggestions across bullet quality, skills, and formatting",
+      impact:    " that automates the feedback cycle for job seekers, identifying missing keywords and weak bullet language to help users measurably improve their interview callback rate",
+      academic:  " applying text parsing algorithms, pattern matching with regular expressions, and rule-based scoring — demonstrating applied problem-solving from CS fundamentals in a real product context",
+    },
+  },
+  {
+    test: /\btool of the week\b|\bweekly tool\b|\bweekly release\b/i,
+    avoid: /module|isolated|routing|cadence|ship\b|independent/i,
+    tails: {
+      technical: ", with each tool built as an isolated React module behind a shared router — enabling independent deployment and zero-downtime weekly releases without cross-feature interference",
+      impact:    ", sustaining a disciplined weekly shipping cadence that demonstrated consistent delivery velocity and kept the platform growing through continuous new feature releases",
+      academic:  ", applying iterative development, modular software design, and continuous deployment principles to release functional tools on a recurring, structured schedule",
+    },
+  },
+  {
+    test: /\b(responsive|layout|ui|user interface|front.?end)\b/i,
+    avoid: /flexbox|css grid|breakpoint|media query|accessib|cross.device|wcag/i,
+    tails: {
+      technical: " using CSS Flexbox and Grid with responsive breakpoints, semantic HTML5 elements, and WCAG 2.1 accessibility standards for full cross-device compatibility and screen-reader support",
+      impact:    ", ensuring the application worked seamlessly across mobile, tablet, and desktop — reducing drop-off from small-screen users and making the product accessible to a wider audience",
+      academic:  " applying mobile-first design principles, progressive enhancement, semantic HTML structure, and WCAG accessibility guidelines to deliver a standards-compliant user interface",
+    },
+  },
+  {
+    test: /\b(performance|optim\w+|re.render|load time|render performance)\b/i,
+    avoid: /react\.memo|lazy|lighthouse|bundle size|code.split|time.to.interactive/i,
+    tails: {
+      technical: " through React.memo for component memoization, React.lazy with Suspense for code splitting, and bundle analysis — reducing initial load time and time-to-interactive for production users",
+      impact:    ", delivering measurably faster page loads and smoother interactions that kept users engaged and reduced abandonment caused by sluggish UI response",
+      academic:  " applying rendering optimization theory including memoization, deferred loading, and component virtualization to improve runtime efficiency in a production React application",
+    },
+  },
+  {
+    test: /\b(dynamic ui|real.time|live update|dynamic scoring|dynamic feedback)\b/i,
+    avoid: /websocket|polling|debounce|throttle|state sync/i,
+    tails: {
+      technical: " using controlled React state updates with debounced input handling and optimistic UI patterns to keep the interface responsive without redundant API calls",
+      impact:    ", giving users immediate visual feedback that made the experience feel fast and interactive — significantly reducing friction compared to page-reload-based update flows",
+      academic:  " applying controlled component patterns, React's unidirectional data flow, and event-driven state management to build a truly reactive user interface",
+    },
+  },
+  {
+    test: /\b(web application|web app|website)\b/i,
+    avoid: /component.based|full.stack|react|responsive|deploy/i,
+    tails: {
+      technical: " using a component-based React architecture with client-side routing via React Router, optimized re-rendering, and a clean separation between data, logic, and presentation layers",
+      impact:    " that delivered a production-quality user experience across devices, demonstrating the ability to independently scope, build, and ship working software for real users",
+      academic:  " applying web development fundamentals including component design, event-driven UI patterns, client-server architecture, and browser rendering principles",
+    },
+  },
+  {
+    test: /\bauthentication\b|\blogin\b|\buser account\b/i,
+    avoid: /jwt|session management|token.based|bcrypt|hash|oauth/i,
+    tails: {
+      technical: " with JWT-based stateless session management, bcrypt password hashing, and route-level authorization middleware that enforces role-based access control throughout the application",
+      impact:    " enabling secure per-user data persistence, premium feature gating, and seamless account management — supporting a monetizable multi-user product architecture",
+      academic:  " applying authentication design patterns including stateless token-based sessions, password hashing with salt rounds, and principle-of-least-privilege access control",
+    },
+  },
+  {
+    test: /\bapi\b|\bbackend\b|\bserver.side\b|\brest endpoint\b/i,
+    avoid: /express|restful routing|middleware|input validation|json error/i,
+    tails: {
+      technical: " using Express.js with RESTful routing, Joi-based input validation middleware, structured JSON error responses, and centralized error handling for predictable API behavior",
+      impact:    " that enabled reliable, scalable data exchange between frontend and backend — supporting feature-rich interactions and reducing client-side error handling complexity",
+      academic:  " applying RESTful design principles, HTTP method semantics, stateless request-response architecture, and middleware composition patterns",
+    },
+  },
+  {
+    test: /\bclean ui\b|\bui for display\b|\bdesigned.*interface\b|\bdesigned.*ui\b/i,
+    avoid: /component|layout|responsive|accessible|flexbox/i,
+    tails: {
+      technical: " using a component-based layout with clear information hierarchy, responsive Flexbox structure, and accessible color contrast ratios to ensure usability across all user contexts",
+      impact:    ", making complex output easy to parse at a glance — improving user comprehension of results and increasing the likelihood of users acting on the insights provided",
+      academic:  " applying visual hierarchy principles, Gestalt design theory, and usability heuristics to create an interface that communicates information clearly and efficiently",
+    },
+  },
+];
+
+function expandBulletAngle(text, angle) {
+  const stripped = text.replace(/[.!?]\s*$/, "");
+  if (stripped.length >= MIN_BULLET_LENGTH) return text;
+
+  // Try angle-specific tails first for genuine variant differentiation
+  for (const { test, avoid, tails } of ANGLE_EXPANSION_RULES) {
+    if (test.test(text) && !avoid.test(text)) {
+      const tail = tails[angle] || tails.technical;
+      return stripped + tail + ".";
+    }
+  }
+
+  // Fall back to neutral expansion rules
+  for (const { test, avoid, tail } of EXPANSION_RULES) {
+    if (test.test(text) && !avoid.test(text)) {
+      return stripped + tail + ".";
+    }
+  }
+
+  return text;
+}
+
+// ─── Vague line rewriter ─────────────────────────────────────────────────────
+// Lines like "Focused on improving X", "Practiced Y", "Strong understanding of Z"
+// have no bullet prefix and no action verb — they go to the non-bullet branch
+// and get zero upgrade. This table completely rewrites them into real bullets,
+// differentiated per angle.
+
+const VAGUE_REWRITES = [
+  {
+    test: /^focused on improving\s+(.+)/i,
+    out: {
+      technical: (rest) => `Iteratively refactored ${rest}, improving code maintainability and reducing component coupling across the codebase.`,
+      impact:    (rest) => `Improved ${rest} through continuous iteration, increasing user satisfaction and reducing friction in key user interactions.`,
+      academic:  (rest) => `Applied UX research principles and iterative design methodology to systematically improve ${rest}.`,
+    },
+  },
+  {
+    test: /^focused on\s+(.+)/i,
+    out: {
+      technical: (rest) => `Enforced ${rest} as a consistent standard across the codebase through structured code review and iterative refactoring.`,
+      impact:    (rest) => `Maintained a disciplined focus on ${rest}, contributing to a more polished and user-centered product across all releases.`,
+      academic:  (rest) => `Concentrated development efforts on ${rest}, applying best practices and theoretical principles to practical implementation.`,
+    },
+  },
+  {
+    // "Practiced structuring scalable components" — strip the gerund to get the concept
+    test: /^practiced(?:\s+structuring)?\s+(.+)/i,
+    out: {
+      technical: (rest) => `Designed and implemented ${rest} using the single-responsibility principle, prop-driven composition, and modular file organization to enforce separation of concerns.`,
+      impact:    (rest) => `Built and maintained ${rest} that eliminated duplicate code and enabled consistent, high-velocity feature delivery across the project.`,
+      academic:  (rest) => `Applied software engineering principles to design ${rest}, reinforcing scalability, separation of concerns, and long-term maintainability fundamentals.`,
+    },
+  },
+  {
+    test: /^(strong understanding of|ability to turn ideas? into|ability to|strength[s]?:?\s*)/i,
+    out: {
+      technical: (rest) => `Demonstrated hands-on proficiency in ${rest || "software engineering"} by consistently shipping production-ready features using React, component-driven architecture, and iterative code review.`,
+      impact:    (rest) => `Translated ${rest || "technical skills"} into tangible product outcomes, shipping user-facing features on schedule with high quality and minimal rework cycles.`,
+      academic:  (rest) => `Developed ${rest || "technical proficiency"} through project-based coursework and self-directed study, applying concepts directly to functional software implementations.`,
+    },
+  },
+  {
+    test: /^(\w[\w\s]+?)\s+\(personal projects?\)/i,
+    out: {
+      technical: (role) => `Led self-directed ${role.trim()} projects end-to-end — designing component architecture, implementing features, and shipping production-ready React applications with Git-based version control.`,
+      impact:    (role) => `Independently scoped, built, and delivered ${role.trim()} projects from concept to production, demonstrating end-to-end product ownership and consistent self-direction.`,
+      academic:  (role) => `Pursued ${role.trim()} projects outside of coursework, applying academic concepts to build, test, and iterate on functional software with real-world constraints.`,
+    },
+  },
+  // Generic vague opener: "Improved X" without enough context
+  {
+    test: /^improved\s+(user\s+)?(experience|usability|ux|interaction|feedback|engagement)\b/i,
+    out: {
+      technical: (rest) => `Optimized ${rest} by refactoring component structure, reducing unnecessary re-renders, and implementing accessible, responsive layout patterns with CSS Flexbox and semantic HTML.`,
+      impact:    (rest) => `Improved ${rest} through iterative UI design and interactive feedback mechanisms, reducing navigation friction and increasing the time users spent engaging with key features.`,
+      academic:  (rest) => `Applied user-centered design principles and iterative prototyping to systematically improve ${rest}, drawing on HCI concepts and usability heuristics.`,
+    },
+  },
+];
+
+function rewriteVagueLine(text, angle) {
+  const trimmed = text.trim().replace(/\.\s*$/, "");
+  for (const { test, out } of VAGUE_REWRITES) {
+    const m = trimmed.match(test);
+    if (m) {
+      const fn = out[angle] || out.technical;
+      // m[1] is the captured group (what comes after the vague opener)
+      const rest = (m[1] || "").trim().replace(/\.\s*$/, "");
+      return "• " + fn(rest);
+    }
+  }
+  return null; // no match
+}
+
 function upgradeBulletFull(bulletText, techStack, angle, isWeak) {
   let upgraded = bulletText;
 
-  // 1. Replace weak opener verb
+  // 1. Replace weak opener verb (angle-specific)
   const replacements = VERB_REPLACEMENTS[angle] || VERB_REPLACEMENTS.technical;
   for (const { pattern, replacement } of replacements) {
     if (pattern.test(upgraded)) {
@@ -450,8 +652,9 @@ function upgradeBulletFull(bulletText, techStack, angle, isWeak) {
     .replace(/::/g, ":")
     .replace(/\bfreemium\s+SaaS\s+freemium\b/gi, "SaaS freemium");
 
-  // 6. Expand bare bullets — add technical context if still too short
-  upgraded = expandBullet(upgraded);
+  // 6. Expand bare bullets with angle-specific content — makes Technical/Impact/Academic
+  //    produce genuinely different output, not just a different opening verb
+  upgraded = expandBulletAngle(upgraded, angle);
 
   // 7. Finalize: period + capitalize
   upgraded = upgraded.trim();
@@ -639,7 +842,7 @@ function buildVariant(resumeText, targetRole, angle, techStack, weakExamples, ha
   let inServerJob = false;
   let serverJobCondensed = false;
   let currentJobBulletCount = 0;
-  const MAX_JOB_BULLETS = 4;
+  const MAX_JOB_BULLETS = 5;
   const MAX_SERVER_BULLETS = 1;
 
   const hasGpa4 = /gpa\s*[:\s]?\s*4\.0/i.test(resumeText);
@@ -739,7 +942,12 @@ function buildVariant(resumeText, targetRole, angle, techStack, weakExamples, ha
         continue;
       }
 
-      const leading = rawLine.match(/^(\s*[-*•\u2022]?\s*)/)?.[1] || "";
+      // Always emit a bullet character so the PDF renderer treats this as a bullet.
+      // Lines caught by isBulletLine() but with no prefix (e.g. "Built a REST API...")
+      // must get "• " added — otherwise the PDF renderer sees them as body text.
+      const leading = hasBulletPrefix
+        ? (rawLine.match(/^(\s*[-*•\u2022]\s*)/)?.[1] || "• ")
+        : "• ";
       const bulletText = trimmed.replace(/^[-*•\u2022]\s*/, "");
 
       // Try specific rewrite first
@@ -756,10 +964,27 @@ function buildVariant(resumeText, targetRole, angle, techStack, weakExamples, ha
       currentJobBulletCount++;
       lastLineWasBullet = true;
     } else {
-      // Non-bullet — apply ATS swaps and double-colon cleanup
-      const cleaned = applyAtsSwaps(rawLine).replace(/::/g, ":");
-      upgradedLines.push(cleaned);
-      lastLineWasBullet = false;
+      // Non-bullet — first check if it's a vague descriptive line that can be
+      // completely rewritten into a real bullet (e.g. "Focused on improving X",
+      // "Practiced Y", "Strong understanding of Z"). If so, rewrite it as a
+      // proper angle-specific achievement bullet. Otherwise just ATS-swap it.
+      const vagueRewrite = rewriteVagueLine(trimmed, angle);
+      if (
+        vagueRewrite &&
+        !inSoftSkills &&
+        pastHeader &&
+        !(SECTION_HEADER_RE.test(trimmed) && trimmed.length < 55) &&
+        !DATE_FRAG.test(trimmed) &&
+        currentJobBulletCount < MAX_JOB_BULLETS
+      ) {
+        upgradedLines.push(vagueRewrite);
+        currentJobBulletCount++;
+        lastLineWasBullet = true;
+      } else {
+        const cleaned = applyAtsSwaps(rawLine).replace(/::/g, ":");
+        upgradedLines.push(cleaned);
+        lastLineWasBullet = false;
+      }
     }
   }
 
@@ -914,7 +1139,48 @@ function buildSuggestions(resumeText) {
     }
   }
 
-  return suggestions;
+  // ── Personal website / portfolio ─────────────────────────────────────────────
+  if (!/https?:\/\/|www\./i.test(resumeText) && !/portfolio|personal site|website/i.test(resumeText)) {
+    suggestions.push({
+      field: "No personal website or portfolio URL",
+      tip: "Add a portfolio site to your header — even a simple GitHub Pages site with your projects listed makes a strong impression",
+    });
+  }
+
+  // ── Sparse content detection ─────────────────────────────────────────────────
+  // Count bullets per job to detect thin experience descriptions
+  const jobSections = resumeText.split(/\n(?=\S.{0,60}(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|\d{4}).{0,30}(?:Present|\d{4}))/i);
+  const thinJobs = jobSections.filter((section, idx) => {
+    if (idx === 0) return false; // skip header
+    const bullets = (section.match(/^[•\-–*]\s/gm) || []).length;
+    return bullets > 0 && bullets < 3;
+  });
+  if (thinJobs.length > 0) {
+    suggestions.push({
+      field: `${thinJobs.length > 1 ? "Multiple jobs" : "A job"} with fewer than 3 bullets`,
+      tip: "Each position should have 3–5 bullet points to look substantive. Add: what problem you solved, the approach you took, and the measurable outcome",
+    });
+  }
+
+  // Count total project count
+  const projectHeaderCount = (resumeText.match(/^(?!.*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|\d{4}))(?:[A-Z][^•\-\n]{5,50})$/gm) || []).length;
+  if (hasProjects && projectHeaderCount < 2) {
+    suggestions.push({
+      field: "Only one project listed",
+      tip: "Add 2–4 projects to your resume. Include personal projects, class projects, or open-source contributions — even small ones count",
+    });
+  }
+
+  // No projects section at all
+  if (!hasProjects) {
+    suggestions.push({
+      field: "No Projects section",
+      tip: "Add a Projects section — this is the single biggest differentiator for early-career developers. Even 1–2 class or personal projects demonstrate skills that work history alone can't show",
+    });
+  }
+
+  // Cap at 6 — prioritize the most impactful suggestions, avoid overwhelming the user
+  return suggestions.slice(0, 6);
 }
 
 // ─── Public API ──────────────────────────────────────────────────────────────
@@ -957,30 +1223,20 @@ export function buildAllVariants(resumeText = "", targetRole = "", analysis = {}
   const missingKeywords = findMissingKeywords(resumeText, targetRole);
 
   const makeVariant = (angle) => {
-    let lines = buildVariant(resumeText, targetRole, angle, techStack, weakExamples, hasSummary);
-    lines = injectKeywordsToSkillsSection(lines, missingKeywords);
+    const lines = buildVariant(resumeText, targetRole, angle, techStack, weakExamples, hasSummary);
     return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
   };
+
+  // Single upgraded resume — technical angle gives the most detail-rich output
+  const upgradeText = makeVariant("technical");
 
   return {
     variants: [
       {
         name: "technical",
-        label: "Technical Depth",
-        description: "Engineering-forward: tools, architecture, and implementation specifics.",
-        text: makeVariant("technical"),
-      },
-      {
-        name: "impact",
-        label: "Impact & Scope",
-        description: "Delivery-forward: what shipped, outcomes, and end-to-end ownership.",
-        text: makeVariant("impact"),
-      },
-      {
-        name: "academic",
-        label: "Clean Academic",
-        description: "Formal: objective statement, credential-forward, no soft skills section.",
-        text: makeVariant("academic"),
+        label: "Upgraded Resume",
+        description: "Bullets rewritten with stronger language, technical depth, and role-specific detail.",
+        text: upgradeText,
       },
     ],
     missingItems: detectMissingItems(resumeText),
@@ -1285,9 +1541,10 @@ function renderExperience(lines) {
     // Detect job header: has date fragment and at least one " – "
     if (DATE_FRAG.test(line) && /[–\-]/.test(line) && !/^[•\-–*]\s/.test(line)) {
       const { title, company, location, dates } = parseJobHeader(line);
+      const companyLocation = [company, location].filter(Boolean).join(", ");
       html += `<div class="job-header">
-        <span class="job-title">${esc([title, company].filter(Boolean).join(", "))}</span>
-        <span class="job-location">${esc(location)}</span>
+        <span class="job-title">${esc(title)}</span>
+        <span class="job-company">${companyLocation ? esc(companyLocation) : ""}</span>
         <span class="job-date">${esc(dates)}</span>
       </div>`;
       i++;
@@ -1315,6 +1572,31 @@ function renderExperience(lines) {
   return html;
 }
 
+// Bold the label part of "Label: value" education sub-lines
+// e.g. "Major: Computer Science" → <span class="edu-label">Major:</span> Computer Science
+// Also handles GPA inline: "GPA: 3.8" or "B.S. Computer Science — GPA: 3.8"
+function renderEduSubLine(rawLine) {
+  // Normalize "GPA 3.8" or "GPA:3.8" into "GPA: 3.8"
+  const line = rawLine.replace(/GPA\s*:?\s*([\d.]+)/i, "GPA: $1");
+
+  // Label pattern: starts with known label keyword followed by colon
+  const labelRe = /^(Major|Minor|Certificate|Coursework|Relevant Coursework|Programming Coursework|EE Coursework|GPA|Concentration|Specialization|Honors|Thesis|Advisor|Dean['']?s List)(\s*\(.*?\))?:\s*/i;
+  const m = line.match(labelRe);
+  if (m) {
+    const label = m[0].trimEnd();
+    const rest  = line.slice(m[0].length);
+    return `<span class="edu-label">${esc(label)}</span>${esc(rest)}`;
+  }
+
+  // GPA embedded in a longer line e.g. "B.S. Computer Science — GPA: 3.8"
+  const gpaSplit = line.match(/^(.*?)\s*[—–-]\s*(GPA:\s*[\d.]+)\s*$/i);
+  if (gpaSplit) {
+    return `${esc(gpaSplit[1])} — <span class="edu-label">${esc(gpaSplit[2])}</span>`;
+  }
+
+  return esc(line);
+}
+
 function renderEducation(lines) {
   let html = "";
   let i = 0;
@@ -1327,19 +1609,21 @@ function renderEducation(lines) {
       const { institution, location, dates } = parseEduLine(line);
       html += `<div class="job-header">
         <span class="job-title">${esc(institution)}</span>
-        <span class="job-location">${esc(location)}</span>
+        <span class="job-company">${location ? esc(location) : ""}</span>
         <span class="job-date">${esc(dates)}</span>
       </div>`;
       i++;
-      // Degree lines follow
-      while (i < lines.length && lines[i].trim() && !DATE_FRAG.test(lines[i]) && !/^[•\-–*]\s/.test(lines[i])) {
-        const degLine = lines[i].replace(/GPA\s*[:\s]?\s*([\d.]+)/i, (_, g) => `— GPA: ${g}`);
-        html += `<div class="edu-degree">${esc(degLine.trim())}</div>`;
+      // Degree sub-lines: degree name, GPA, coursework etc — rendered as bold-labeled bullets
+      while (i < lines.length && lines[i].trim() && !DATE_FRAG.test(lines[i])) {
+        const bl = lines[i];
+        const rawLine = /^[•\-–*]\s/.test(bl) ? bl.replace(/^[•\-–*]\s*/, "") : bl.trim();
+        if (!rawLine) { i++; continue; }
+        html += `<div class="edu-bullet">&#8226;&nbsp; ${renderEduSubLine(rawLine)}</div>`;
         i++;
       }
       html += `<div class="job-gap"></div>`;
     } else if (/^[•\-–*]\s/.test(line)) {
-      html += `<div class="dash-bullet">&#8211;&nbsp; ${esc(line.replace(/^[•\-–*]\s*/, ""))}</div>`;
+      html += `<div class="edu-bullet">&#8226;&nbsp; ${renderEduSubLine(line.replace(/^[•\-–*]\s*/, ""))}</div>`;
       i++;
     } else {
       html += `<div class="body-line">${esc(line)}</div>`;
@@ -1410,18 +1694,18 @@ function renderProjects(lines) {
         i++;
       }
 
-      // Render all bullets first
+      // Render all bullets first (projects use "- " dash style like Terrence Kuo)
       html += projectBullets
-        .map((b) => `<div class="dash-bullet">&#8211;&nbsp; ${esc(b)}</div>`)
+        .map((b) => `<div class="dash-bullet">- ${esc(b)}</div>`)
         .join("");
 
       // Then render exactly ONE Utilized: line at the end
       if (explicitUtilized) {
-        html += `<div class="utilized">${esc(explicitUtilized)}</div>`;
+        html += `<div class="utilized"><span class="edu-label">Utilized:</span> ${esc(explicitUtilized.replace(/^utilized\s*:\s*/i, ""))}</div>`;
       } else if (projectBullets.length > 0) {
         const tech = extractTechFromBullets(projectBullets);
         if (tech.length) {
-          html += `<div class="utilized">Utilized: ${esc(tech.join(", "))}</div>`;
+          html += `<div class="utilized"><span class="edu-label">Utilized:</span> ${esc(tech.join(", "))}</div>`;
         }
       }
 
@@ -1501,24 +1785,72 @@ function buildResumeHtml(text, filename) {
     i++;
   }
 
+  // ── 2b. Calculate spacing based on content density ──
+  // Count non-empty content lines (bullets, job headers, skill rows, etc.)
+  // so we can scale spacing to always fill the page regardless of resume length.
+  let contentLineCount = 4; // header block (~4 line equivalents)
+  for (const sec of sections) {
+    contentLineCount += 2; // section heading + rule
+    for (const line of sec.lines) {
+      if (line.trim()) contentLineCount += 1;
+    }
+  }
+
+  // Four spacing presets — scales from ultra-tight for heavy resumes to generous for sparse ones.
+  // Ultra-dense (≥65 lines): absolute minimum spacing, smaller font.
+  // Dense (≥50 lines): tight, everything packed in.
+  // Medium (35–49 lines): moderate spacing.
+  // Sparse (<35 lines): generous spacing to fill full page height.
+  let sp;
+  if (contentLineCount >= 65) {
+    sp = { lh: 1.1,  secGap: "3px",  bulletMb: "0px", jobGap: "2px",  ruleMb: "2px", bodyV: "0.35in", bodyH: "0.4in",  namePt: "18pt", headerMb: "3px", fontSize: "9.5pt"  };
+  } else if (contentLineCount >= 50) {
+    sp = { lh: 1.2,  secGap: "5px",  bulletMb: "1px", jobGap: "3px",  ruleMb: "3px", bodyV: "0.4in",  bodyH: "0.45in", namePt: "20pt", headerMb: "4px", fontSize: "10pt"   };
+  } else if (contentLineCount >= 35) {
+    sp = { lh: 1.35, secGap: "9px",  bulletMb: "3px", jobGap: "7px",  ruleMb: "5px", bodyV: "0.45in", bodyH: "0.5in",  namePt: "21pt", headerMb: "6px", fontSize: "10.5pt" };
+  } else {
+    sp = { lh: 1.6,  secGap: "16px", bulletMb: "5px", jobGap: "13px", ruleMb: "8px", bodyV: "0.55in", bodyH: "0.55in", namePt: "22pt", headerMb: "10px", fontSize: "10.5pt" };
+  }
+
   // ── 3. Render header ──
-  const contactParts = contactLines
-    .map((l) =>
-      l.replace(/^LinkedIn:\s*/i, "")
-       .replace(/^GitHub:\s*/i, "")
-       .replace(/\s*[—–]\s*/g, " • ")
-       .trim()
+  // Flatten all contact lines into individual tokens, splitting on " • " and " – "
+  const rawContactParts = contactLines
+    .flatMap((l) =>
+      l.replace(/^LinkedIn:\s*/i, "linkedin.com/in/")
+       .replace(/^GitHub:\s*/i, "github.com/")
+       .split(/\s*[•·—–|]\s*/)
     )
+    .map((s) => s.trim())
     .filter(Boolean);
 
-  const contactHtml = contactParts
-    .map((p) => `<span class="contact-part">${esc(p)}</span>`)
-    .join('<span class="contact-sep"> • </span>');
+  // Split tokens into left side (location, github, linkedin) vs right side (phone, email, website)
+  const leftParts = [];
+  const rightParts = [];
+  for (const p of rawContactParts) {
+    const lo = p.toLowerCase();
+    if (/github\.com/i.test(p) || /linkedin\.com/i.test(p)) {
+      leftParts.push(p);
+    } else if (/@/.test(p) || /\(?\d{3}\)?[\s.\-]\d{3}[\s.\-]\d{4}/.test(p)) {
+      rightParts.push(p);
+    } else if (/\.[a-z]{2,}(\/|$)/.test(lo) && !/github|linkedin/.test(lo)) {
+      // personal website URL
+      rightParts.push(p);
+    } else if (/^[A-Z][a-zA-Z\s]+,?\s*[A-Z]{2}$/.test(p) || /city|state|address/i.test(p)) {
+      // looks like a location "Tucson, AZ"
+      leftParts.push(p);
+    } else {
+      rightParts.push(p);
+    }
+  }
+
+  const headerLeftHtml  = leftParts.map((p) => `<div>${esc(p)}</div>`).join("");
+  const headerRightHtml = rightParts.map((p) => `<div>${esc(p)}</div>`).join("");
 
   let body = `
-    <div class="resume-header">
-      <div class="resume-name">${esc(name)}</div>
-      ${contactHtml ? `<div class="resume-contact">${contactHtml}</div>` : ""}
+    <div class="resume-header-grid">
+      <div class="header-left">${headerLeftHtml}</div>
+      <div class="header-center"><div class="resume-name">${esc(name)}</div></div>
+      <div class="header-right">${headerRightHtml}</div>
     </div>`;
 
   // ── 4. Render sections ──
@@ -1533,30 +1865,54 @@ function buildResumeHtml(text, filename) {
   <meta charset="UTF-8"/>
   <title>${esc(name || "Resume")}</title>
   <style>
+    @page {
+      size: letter portrait;
+      margin: 0;
+    }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
       font-family: "Times New Roman", Times, serif;
-      font-size: 10.5pt;
+      font-size: ${sp.fontSize};
       color: #000;
       background: #fff;
-      margin: 0.5in;
-      line-height: 1.3;
+      padding: ${sp.bodyV} ${sp.bodyH};
+      line-height: ${sp.lh};
     }
 
-
-    .resume-header { text-align: center; margin-bottom: 7px; }
+    /* ── 3-column header: address/links left | NAME center | phone/email right ── */
+    .resume-header-grid {
+      display: flex;
+      width: 100%;
+      align-items: flex-start;
+      margin-bottom: ${sp.headerMb};
+    }
+    .header-left {
+      flex: 0 0 28%;
+      font-size: 9pt;
+      color: #111;
+      line-height: 1.5;
+    }
+    .header-center {
+      flex: 1 1 auto;
+      text-align: center;
+    }
+    .header-right {
+      flex: 0 0 28%;
+      text-align: right;
+      font-size: 9pt;
+      color: #111;
+      line-height: 1.5;
+    }
     .resume-name {
-      font-size: 19pt;
+      font-size: ${sp.namePt};
       font-weight: bold;
       font-variant: small-caps;
       letter-spacing: 0.04em;
-      margin-bottom: 2px;
+      line-height: 1.1;
     }
-    .resume-contact { font-size: 9pt; color: #111; }
-    .contact-sep { color: #555; }
 
-    .section { margin-top: 6px; }
+    .section { margin-top: ${sp.secGap}; }
     .sec-heading {
       font-size: 10pt;
       font-variant: small-caps;
@@ -1568,27 +1924,45 @@ function buildResumeHtml(text, filename) {
     .sec-rule {
       border: none;
       border-top: 1px solid #000;
-      margin-bottom: 4px;
+      margin-bottom: ${sp.ruleMb};
     }
 
-    .job-header { display: table; width: 100%; margin-bottom: 1px; }
-    .job-title  { display: table-cell; font-weight: bold; font-size: 10.5pt; width: 55%; }
-    .job-location { display: table-cell; text-align: center; font-size: 9.5pt; color: #222; width: 20%; }
-    .job-date   { display: table-cell; text-align: right; font-size: 9.5pt; color: #222; white-space: nowrap; width: 25%; }
-    .job-desc   { font-style: italic; font-size: 9.5pt; color: #333; margin-bottom: 1px; }
-    .edu-degree { font-size: 9.5pt; margin-bottom: 1px; padding-left: 2px; }
-    .job-gap    { height: 4px; }
+    /* 3-column job row: Title | Company, Location | Date */
+    .job-header { display: flex; width: 100%; align-items: baseline; margin-bottom: 2px; }
+    .job-title  { font-size: 10.5pt; flex: 0 0 auto; }
+    .job-company { font-style: italic; font-size: 9.5pt; color: #222; flex: 1 1 auto; text-align: center; padding: 0 6px; }
+    .job-date   { font-size: 9.5pt; color: #222; white-space: nowrap; flex: 0 0 auto; }
+    .job-desc   { font-style: italic; font-size: 9.5pt; color: #333; margin-bottom: 2px; }
+    .job-gap    { height: ${sp.jobGap}; }
 
-    .dash-bullet { font-size: 10.5pt; margin-left: 14px; margin-bottom: 1px; line-height: 1.3; }
+    /* Hanging-indent bullets: dash stays at left, wrapped text aligns under text start */
+    .dash-bullet {
+      font-size: 10.5pt;
+      margin-bottom: ${sp.bulletMb};
+      line-height: ${sp.lh};
+      padding-left: 14px;
+      text-indent: -14px;
+    }
 
-    .project-name { font-weight: bold; font-size: 10.5pt; margin-top: 3px; margin-bottom: 1px; }
-    .project-sub  { font-style: italic; font-size: 9.5pt; color: #333; margin-bottom: 1px; }
-    .utilized     { font-size: 9pt; color: #222; margin-left: 14px; margin-top: 1px; margin-bottom: 2px; }
+    /* Project names: italic (not bold) — only section headings are bold */
+    .project-name { font-style: italic; font-size: 10.5pt; margin-top: 3px; margin-bottom: 1px; }
+    .project-sub  { font-size: 9.5pt; color: #333; margin-bottom: 2px; }
+    .utilized     { font-size: 9pt; color: #222; padding-left: 14px; text-indent: -14px; margin-top: 1px; margin-bottom: ${sp.bulletMb}; }
 
-    .skill-row   { font-size: 10pt; margin-bottom: 2px; }
+    .skill-row   { font-size: 10pt; margin-bottom: ${sp.bulletMb}; }
     .skill-label { font-weight: bold; font-style: italic; }
 
-    .body-line { font-size: 10pt; margin-bottom: 1px; }
+    /* Education sub-lines rendered as indented bullets with bold label */
+    .edu-bullet {
+      font-size: 10pt;
+      margin-bottom: ${sp.bulletMb};
+      padding-left: 14px;
+      text-indent: -14px;
+      line-height: ${sp.lh};
+    }
+    .edu-label { font-weight: bold; }
+
+    .body-line { font-size: 10pt; margin-bottom: ${sp.bulletMb}; }
 
     /* Suppress browser-added headers/footers: set @page margin to 0 so
        Chrome/Firefox have no space to render URL, date, or title stamps.
@@ -1599,7 +1973,7 @@ function buildResumeHtml(text, filename) {
     }
     @media print {
       html, body { background: #fff; -webkit-print-color-adjust: exact; }
-      body { margin: 0.5in !important; }
+      body { margin: ${sp.bodyV} ${sp.bodyH} !important; }
       header, footer,
       #header, #footer,
       .header, .footer { display: none !important; height: 0 !important; }
