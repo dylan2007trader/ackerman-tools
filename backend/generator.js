@@ -175,14 +175,16 @@ async function buildPremiumResume({ resumeText = "", targetRole = "" }) {
     max_tokens: 2048,
     system: `You are a professional resume writer. Rewrite the provided resume with stronger action verbs, expanded bullet points with measurable metrics, and enough detail to fill a full page. Keep all facts accurate — only expand and improve what is already there.
 
-IMPORTANT — formatting rules (follow exactly):
-- Return plain text only. No markdown. No #, ##, **, *, ---, or any markdown symbols.
-- First line: candidate full name in ALL CAPS (e.g. JOHN SMITH)
-- Second/third lines: contact info (email, phone, city)
-- Section headers in ALL CAPS on their own line (e.g. EXPERIENCE, EDUCATION, SKILLS, TECHNICAL SKILLS)
-- Job headers as: "Job Title | Company, Location | Start – End" on one line
-- Bullet points starting with "• " (the bullet character, not a dash)
-- One blank line between sections`,
+FORMATTING RULES — follow exactly, no exceptions:
+- Plain text only. No markdown, no #, ##, **, *, ---, underscores, or any markdown symbols.
+- Line 1: full name in ALL CAPS (e.g. JOHN SMITH)
+- Line 2: contact info as one line separated by " • " (e.g. city, ST • phone • email • linkedin)
+- Blank line, then sections in this order: EDUCATION, EXPERIENCE, PROJECTS (if any), TECHNICAL SKILLS
+- Section headers in ALL CAPS on their own line (EDUCATION, EXPERIENCE, PROJECTS, TECHNICAL SKILLS)
+- Do NOT include a Summary, Objective, or Core Competencies section
+- Job/entry header on one line: "Job Title | Company, Location | Month Year – Month Year"
+- Bullet points start with "• " (bullet character). Keep each bullet to 1-2 lines max.
+- One blank line between sections, no blank lines between bullets within a job`,
     messages: [{ role: "user", content: userMessage }],
   });
 

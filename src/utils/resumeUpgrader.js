@@ -1788,7 +1788,7 @@ function buildResumeHtml(text, filename) {
   while (i < rawLines.length && !rawLines[i]) i++;
 
   // ── 2. Parse into sections, skipping SUMMARY/OBJECTIVE ──
-  const SKIP_SECTIONS = /^(SUMMARY|OBJECTIVE|PROFESSIONAL SUMMARY|PROJECT\s+LIFE\s*CYCLE\.?|SDLC\.?)$/i;
+  const SKIP_SECTIONS = /^(SUMMARY|OBJECTIVE|PROFESSIONAL SUMMARY|PROJECT\s+LIFE\s*CYCLE\.?|SDLC\.?|CORE\s+COMPETENCIES)$/i;
   const sections = [];
   let curSection = null;
 
@@ -1832,44 +1832,25 @@ function buildResumeHtml(text, filename) {
   }
 
   // ── 3. Render header ──
-  // Flatten all contact lines into individual tokens, splitting on " • " and " – "
-  const rawContactParts = contactLines
+  // Flatten all contact lines into individual tokens
+  const contactParts = contactLines
     .flatMap((l) =>
       l.replace(/^LinkedIn:\s*/i, "linkedin.com/in/")
        .replace(/^GitHub:\s*/i, "github.com/")
+       // Fix doubled LinkedIn URLs: linkedin.com/in/https://www.linkedin.com/in/...
+       .replace(/linkedin\.com\/in\/https?:\/\/(?:www\.)?linkedin\.com\/in\//i, "linkedin.com/in/")
        .split(/\s*[•·—–|]\s*/)
     )
     .map((s) => s.trim())
     .filter(Boolean);
 
-  // Split tokens into left side (location, github, linkedin) vs right side (phone, email, website)
-  const leftParts = [];
-  const rightParts = [];
-  for (const p of rawContactParts) {
-    const lo = p.toLowerCase();
-    if (/github\.com/i.test(p) || /linkedin\.com/i.test(p)) {
-      leftParts.push(p);
-    } else if (/@/.test(p) || /\(?\d{3}\)?[\s.\-]\d{3}[\s.\-]\d{4}/.test(p)) {
-      rightParts.push(p);
-    } else if (/\.[a-z]{2,}(\/|$)/.test(lo) && !/github|linkedin/.test(lo)) {
-      // personal website URL
-      rightParts.push(p);
-    } else if (/^[A-Z][a-zA-Z\s]+,?\s*[A-Z]{2}$/.test(p) || /city|state|address/i.test(p)) {
-      // looks like a location "Tucson, AZ"
-      leftParts.push(p);
-    } else {
-      rightParts.push(p);
-    }
-  }
-
-  const headerLeftHtml  = leftParts.map((p) => `<div>${esc(p)}</div>`).join("");
-  const headerRightHtml = rightParts.map((p) => `<div>${esc(p)}</div>`).join("");
+  const contactLine = contactParts.join(" • ");
 
   let body = `
-    <div class="resume-header-grid">
-      <div class="header-left">${headerLeftHtml}</div>
-      <div class="header-center"><div class="resume-name">${esc(name)}</div></div>
-      <div class="header-right">${headerRightHtml}</div>
+    <div class="resume-header">
+      <div class="resume-name">${esc(name)}</div>
+      ${contactLine ? `<div class="resume-contact">${esc(contactLine)}</div>` : ""}
+      <hr class="header-rule"/>
     </div>`;
 
   // ── 4. Render sections ──
@@ -1899,36 +1880,28 @@ function buildResumeHtml(text, filename) {
       line-height: ${sp.lh};
     }
 
-    /* ── 3-column header: address/links left | NAME center | phone/email right ── */
-    .resume-header-grid {
-      display: flex;
-      width: 100%;
-      align-items: flex-start;
-      margin-bottom: ${sp.headerMb};
-    }
-    .header-left {
-      flex: 0 0 28%;
-      font-size: 9pt;
-      color: #111;
-      line-height: 1.5;
-    }
-    .header-center {
-      flex: 1 1 auto;
+    /* ── Centered header: NAME → contact line → HR ── */
+    .resume-header {
       text-align: center;
-    }
-    .header-right {
-      flex: 0 0 28%;
-      text-align: right;
-      font-size: 9pt;
-      color: #111;
-      line-height: 1.5;
+      margin-bottom: ${sp.headerMb};
     }
     .resume-name {
       font-size: ${sp.namePt};
       font-weight: bold;
-      font-variant: small-caps;
-      letter-spacing: 0.04em;
-      line-height: 1.1;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      line-height: 1.15;
+    }
+    .resume-contact {
+      font-size: 9pt;
+      color: #222;
+      margin-top: 3px;
+      line-height: 1.4;
+    }
+    .header-rule {
+      border: none;
+      border-top: 1.5px solid #000;
+      margin-top: 5px;
     }
 
     .section { margin-top: ${sp.secGap}; }
