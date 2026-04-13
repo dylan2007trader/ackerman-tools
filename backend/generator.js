@@ -4,6 +4,7 @@ const Anthropic = require("@anthropic-ai/sdk");
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL = "claude-haiku-4-5-20251001";
+const MOCK_AI = process.env.MOCK_AI === "true";
 
 // ─── Shared helpers ──────────────────────────────────────────────────────────
 
@@ -144,6 +145,13 @@ function analyzeResumeText(text = "", targetRole = "") {
 async function buildPremiumResume({ resumeText = "", targetRole = "" }) {
   const analysis = analyzeResumeText(resumeText, targetRole);
 
+  if (MOCK_AI) {
+    return {
+      analysis,
+      premiumResume: `[MOCK] ${resumeText}\n\n— Mock mode active (MOCK_AI=true). No tokens used.`,
+    };
+  }
+
   const userMessage = targetRole
     ? `TARGET ROLE: ${targetRole}\n\nRESUME:\n${resumeText}`
     : `RESUME:\n${resumeText}`;
@@ -173,6 +181,26 @@ async function buildStructuredCoverLetter({
   targetRole = "",
 }) {
   const contact = extractContact(resumeText);
+
+  if (MOCK_AI) {
+    return {
+      headerName: contact.name,
+      headerLine: contact.headerLine,
+      linkedIn: contact.linkedIn,
+      dateLine: new Date().toLocaleDateString("en-US"),
+      companyLine: "Hiring Team",
+      companyName: "",
+      companyLocation: "",
+      greeting: "Dear Hiring Team,",
+      bodyParagraphs: [
+        "[MOCK] This is a mock cover letter body paragraph. No tokens were used.",
+        `[MOCK] Target role: ${targetRole || "not specified"}. Job description length: ${jobDescription.length} chars.`,
+        "[MOCK] Disable MOCK_AI in backend/.env to generate real cover letters.",
+      ],
+      closing: "Thank you for your consideration.",
+      signature: contact.name,
+    };
+  }
 
   const userMessage = [
     `RESUME:\n${resumeText}`,
