@@ -6,6 +6,20 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL = "claude-haiku-4-5-20251001";
 const MOCK_AI = process.env.MOCK_AI === "true";
 
+// Strip any markdown Claude sneaks in so the PDF parser gets clean plain text
+function stripMarkdown(text) {
+  return text
+    .replace(/^#{1,4}\s+/gm, "")          // ## Section Header → Section Header
+    .replace(/\*\*(.*?)\*\*/g, "$1")       // **bold** → bold
+    .replace(/\*(.*?)\*/g, "$1")           // *italic* → italic
+    .replace(/^---+\s*$/gm, "")           // horizontal rules
+    .replace(/^___+\s*$/gm, "")
+    .replace(/^- /gm, "• ")               // - bullet → • bullet
+    .replace(/^\* /gm, "• ")              // * bullet → • bullet
+    .replace(/\n{3,}/g, "\n\n")           // collapse excess blank lines
+    .trim();
+}
+
 // ─── Shared helpers ──────────────────────────────────────────────────────────
 
 const ACTION_VERBS = [
@@ -159,16 +173,26 @@ async function buildPremiumResume({ resumeText = "", targetRole = "" }) {
   const message = await anthropic.messages.create({
     model: MODEL,
     max_tokens: 2048,
-    system:
-      "You are a professional resume writer. Rewrite the provided resume with stronger action verbs, expanded bullet points with measurable metrics, and enough detail to fill a full page. Keep all facts accurate — only expand and improve what is already there. Return the result as plain structured text with clear section headers.",
+    system: `You are a professional resume writer. Rewrite the provided resume with stronger action verbs, expanded bullet points with measurable metrics, and enough detail to fill a full page. Keep all facts accurate — only expand and improve what is already there.
+
+IMPORTANT — formatting rules (follow exactly):
+- Return plain text only. No markdown. No #, ##, **, *, ---, or any markdown symbols.
+- First line: candidate full name in ALL CAPS (e.g. JOHN SMITH)
+- Second/third lines: contact info (email, phone, city)
+- Section headers in ALL CAPS on their own line (e.g. EXPERIENCE, EDUCATION, SKILLS, TECHNICAL SKILLS)
+- Job headers as: "Job Title | Company, Location | Start – End" on one line
+- Bullet points starting with "• " (the bullet character, not a dash)
+- One blank line between sections`,
     messages: [{ role: "user", content: userMessage }],
   });
 
-  const premiumResume = message.content
-    .filter((block) => block.type === "text")
-    .map((block) => block.text)
-    .join("")
-    .trim();
+  const premiumResume = stripMarkdown(
+    message.content
+      .filter((block) => block.type === "text")
+      .map((block) => block.text)
+      .join("")
+      .trim()
+  );
 
   return { analysis, premiumResume };
 }
