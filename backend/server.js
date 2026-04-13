@@ -62,6 +62,7 @@ async function initDb() {
       FOREIGN KEY(user_id) REFERENCES users(id)
     );
   `);
+  try { await db.run("ALTER TABLE purchases ADD COLUMN subscription_id TEXT"); } catch (_) {}
 }
 
 function normalizeUsername(value = "") {
@@ -114,17 +115,19 @@ async function grantPurchase({
   appId,
   checkoutSessionId = "",
   paymentIntentId = "",
+  subscriptionId = "",
   provider = "stripe",
 }) {
   await db.run(
     `
-      INSERT INTO purchases (user_id, app_id, provider, checkout_session_id, payment_intent_id, status, updated_at)
-      VALUES (?, ?, ?, ?, ?, 'paid', CURRENT_TIMESTAMP)
+      INSERT INTO purchases (user_id, app_id, provider, checkout_session_id, payment_intent_id, subscription_id, status, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, 'paid', CURRENT_TIMESTAMP)
       ON CONFLICT(user_id, app_id)
       DO UPDATE SET
         provider = excluded.provider,
         checkout_session_id = CASE WHEN excluded.checkout_session_id != '' THEN excluded.checkout_session_id ELSE purchases.checkout_session_id END,
         payment_intent_id = CASE WHEN excluded.payment_intent_id != '' THEN excluded.payment_intent_id ELSE purchases.payment_intent_id END,
+        subscription_id = CASE WHEN excluded.subscription_id != '' THEN excluded.subscription_id ELSE purchases.subscription_id END,
         status = 'paid',
         updated_at = CURRENT_TIMESTAMP
     `,
@@ -132,7 +135,8 @@ async function grantPurchase({
     appId,
     provider,
     checkoutSessionId,
-    paymentIntentId
+    paymentIntentId,
+    subscriptionId
   );
 }
 
@@ -193,6 +197,7 @@ app.post(
         const session = event.data.object;
         const userId = Number(session.metadata?.userId || 0);
         const appId = session.metadata?.appId || APP_IDS.RESUME_SUITE;
+        const subscriptionId = String(session.subscription || "");
 
         if (userId && appId && session.payment_status === "paid") {
           await grantPurchase({
@@ -200,9 +205,18 @@ app.post(
             appId,
             checkoutSessionId: session.id || "",
             paymentIntentId: String(session.payment_intent || ""),
+            subscriptionId,
             provider: "stripe",
           });
         }
+      }
+
+      if (event.type === "customer.subscription.deleted") {
+        const sub = event.data.object;
+        await db.run(
+          `UPDATE purchases SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE subscription_id = ?`,
+          sub.id
+        );
       }
 
       return res.json({ received: true });
@@ -403,7 +417,7 @@ app.post("/api/checkout/create-session", requireAuth, async (req, res) => {
     }
 
     const session = await stripe.checkout.sessions.create({
-      mode: "payment",
+      mode: "subscription",
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: `${returnUrl}?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${returnUrl}?checkout=cancelled`,
@@ -413,6 +427,7 @@ app.post("/api/checkout/create-session", requireAuth, async (req, res) => {
         username: user.username,
         appId,
       },
+      subscription_data: { metadata: { userId: String(user.id), appId } },
     });
 
     return res.json({ ok: true, url: session.url });

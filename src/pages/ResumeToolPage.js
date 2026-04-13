@@ -9,9 +9,8 @@ import PremiumUpsell from "../components/resume/PremiumUpsell";
 import AuthModal from "../components/auth/AuthModal";
 
 import { analyzeResume } from "../utils/resumeAnalyzer";
-import { buildAllVariants, downloadResumeText, downloadResumeDocx, downloadResumePdf } from "../utils/resumeUpgrader";
+import { downloadResumeText, downloadResumeDocx, downloadResumePdf } from "../utils/resumeUpgrader";
 import {
-  buildCoverLetter,
   buildCoverLetterText,
   downloadCoverLetterText,
   downloadCoverLetterDocx,
@@ -21,6 +20,8 @@ import {
   APP_IDS,
   getCurrentUser,
   hasPurchasedApp,
+  generatePremiumResume,
+  generatePremiumCoverLetter,
 } from "../services/accountStore";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
@@ -210,7 +211,7 @@ export default function ResumeToolPage() {
     );
   }
 
-  function handleGenerateResume() {
+  async function handleGenerateResume() {
     if (!isPremium) {
       handlePremiumUpgrade();
       return;
@@ -222,20 +223,21 @@ export default function ResumeToolPage() {
     setIsGeneratingResume(true);
     setError("");
     try {
-      const { variants, missingItems: missing, suggestions: sugg } = buildAllVariants(resumeText, role, analysis || {});
-      setSuggestions(sugg || []);
-      setGeneratedResume(variants[0]?.text || "");
-      setMissingItems(missing);
+      const result = await generatePremiumResume({ resumeText, targetRole: role, appId: APP_ID });
+      if (!result.ok) throw new Error(result.message || "Generation failed.");
+      setGeneratedResume(result.premiumResume || "");
+      setSuggestions([]);
+      setMissingItems([]);
       setPremiumTab("resume");
     } catch (err) {
-      setError("Could not generate the upgraded resume.");
+      setError(err.message || "Could not generate the upgraded resume.");
       console.error(err);
     } finally {
       setIsGeneratingResume(false);
     }
   }
 
-  function handleGenerateCoverLetter() {
+  async function handleGenerateCoverLetter() {
     if (!isPremium) {
       handlePremiumUpgrade();
       return;
@@ -251,17 +253,17 @@ export default function ResumeToolPage() {
     setIsGeneratingCoverLetter(true);
     setError("");
     try {
-      const letter = buildCoverLetter({
+      const result = await generatePremiumCoverLetter({
         resumeText,
-        jobDescription,
         targetRole: role,
-        companyName: coverCompany,
-        jobTitle: coverJobTitle,
+        jobDescription,
+        appId: APP_ID,
       });
-      setGeneratedCoverLetter(letter);
+      if (!result.ok) throw new Error(result.message || "Generation failed.");
+      setGeneratedCoverLetter(result.letter);
       setPremiumTab("cover");
     } catch (err) {
-      setError("Could not generate the cover letter.");
+      setError(err.message || "Could not generate the cover letter.");
       console.error(err);
     } finally {
       setIsGeneratingCoverLetter(false);
