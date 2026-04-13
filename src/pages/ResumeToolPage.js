@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { Link } from "react-router-dom";
 import mammoth from "mammoth";
 import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf";
 
@@ -293,15 +294,33 @@ export default function ResumeToolPage() {
     }
   }
 
+  const SECTION_CONTENT = {
+    grader: {
+      badge: "free tool",
+      title: "Resume Grader",
+      subtitle: "Upload your resume, choose your target role, and get a detailed score based on keywords, ATS fit, bullet quality, structure, and impact.",
+    },
+    resume: {
+      badge: "premium",
+      title: "Resume Upgrade",
+      subtitle: "Claude rewrites every bullet with stronger action verbs, measurable metrics, and technical depth — tailored to your target role.",
+    },
+    cover: {
+      badge: "premium",
+      title: "Cover Letter Generator",
+      subtitle: "Generate a tailored, one-page cover letter in seconds. Claude pulls the best evidence from your resume and connects it to the job.",
+    },
+  };
+
+  const hero = SECTION_CONTENT[activeSection];
+
   return (
     <div style={styles.page}>
       <div style={styles.hero}>
-        <div style={styles.heroBadge}>resume builder + cover letter generator</div>
-        <h1 style={styles.heroTitle}>Resume grader</h1>
-        <p style={styles.heroSubtitle}>
-          Upload your resume, choose your target role, and get a harsher score
-          based on keywords, ATS fit, bullet quality, structure, and impact.
-        </p>
+        <Link to="/" style={styles.backLink}>← Back to home</Link>
+        <div style={styles.heroBadge}>{hero.badge}</div>
+        <h1 style={styles.heroTitle}>{hero.title}</h1>
+        <p style={styles.heroSubtitle}>{hero.subtitle}</p>
       </div>
 
       {/* ── Three-section nav ── */}
@@ -990,6 +1009,14 @@ const styles = {
   hero: {
     maxWidth: "1100px",
     margin: "0 auto 24px auto",
+  },
+  backLink: {
+    display: "inline-block",
+    marginBottom: "16px",
+    color: "#a5b4fc",
+    fontSize: "14px",
+    textDecoration: "none",
+    opacity: 0.8,
   },
   heroBadge: {
     display: "inline-flex",
