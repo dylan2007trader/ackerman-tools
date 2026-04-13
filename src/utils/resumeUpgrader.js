@@ -8,7 +8,7 @@ const ROLE_ATS_KEYWORDS = {
   "software engineer": [
     "REST APIs", "Git", "GitHub", "Agile", "CI/CD", "unit testing", "code review",
     "version control", "full-stack development", "API development", "debugging",
-    "performance optimization", "software development life cycle", "microservices",
+    "performance optimization", "microservices",
     "object-oriented design", "system design", "scalability", "Node.js", "React",
     "TypeScript", "JSON", "HTTP", "deployment", "automated testing",
   ],
@@ -410,7 +410,8 @@ const EXPANSION_RULES = [
     tail: " with configurable flags, stdin/stdout piping, and structured output formatting" },
 ];
 
-const MIN_BULLET_LENGTH = 130; // chars below which we attempt expansion — aim for full, detailed bullets
+const MIN_BULLET_LENGTH = 95;  // chars below which we attempt expansion
+const MAX_BULLET_CHARS   = 175; // hard cap — truncate at last sentence boundary
 
 function expandBullet(text) {
   if (text.replace(/[.!?]\s*$/, "").length >= MIN_BULLET_LENGTH) return text;
@@ -656,8 +657,26 @@ function upgradeBulletFull(bulletText, techStack, angle, isWeak) {
   //    produce genuinely different output, not just a different opening verb
   upgraded = expandBulletAngle(upgraded, angle);
 
-  // 7. Finalize: period + capitalize
+  // 7. Hard-cap length — trim at last sentence boundary under MAX_BULLET_CHARS
   upgraded = upgraded.trim();
+  if (upgraded.length > MAX_BULLET_CHARS) {
+    // find last sentence-ending punctuation before the cap
+    const cutoff = upgraded.lastIndexOf(".", MAX_BULLET_CHARS);
+    const cutoffSemi = upgraded.lastIndexOf(";", MAX_BULLET_CHARS);
+    const cutoffComma = upgraded.lastIndexOf(",", MAX_BULLET_CHARS);
+    const best = Math.max(cutoff, cutoffSemi);
+    if (best > MAX_BULLET_CHARS * 0.5) {
+      upgraded = upgraded.slice(0, best + 1).trim();
+    } else if (cutoffComma > MAX_BULLET_CHARS * 0.5) {
+      // fall back to comma boundary, drop trailing comma
+      upgraded = upgraded.slice(0, cutoffComma).trim();
+    } else {
+      // last resort — hard trim at word boundary
+      upgraded = upgraded.slice(0, MAX_BULLET_CHARS).replace(/\s+\S*$/, "").trim();
+    }
+  }
+
+  // 8. Finalize: period + capitalize
   if (upgraded && !/[.!?]$/.test(upgraded)) upgraded += ".";
   if (upgraded.length > 0) upgraded = upgraded.charAt(0).toUpperCase() + upgraded.slice(1);
 
@@ -842,7 +861,7 @@ function buildVariant(resumeText, targetRole, angle, techStack, weakExamples, ha
   let inServerJob = false;
   let serverJobCondensed = false;
   let currentJobBulletCount = 0;
-  const MAX_JOB_BULLETS = 5;
+  const MAX_JOB_BULLETS = 4;
   const MAX_SERVER_BULLETS = 1;
 
   const hasGpa4 = /gpa\s*[:\s]?\s*4\.0/i.test(resumeText);
@@ -870,6 +889,9 @@ function buildVariant(resumeText, targetRole, angle, techStack, weakExamples, ha
       // Reset bullet count when we hit a blank line between jobs
       continue;
     }
+
+    // Drop bogus "PROJECT LIFECYCLE" section headers (and their content) entirely
+    if (/^project\s+life\s*cycle/i.test(trimmed)) continue;
 
     // Section header handling
     if (SECTION_HEADER_RE.test(trimmed) && trimmed.length < 55) {
@@ -1766,7 +1788,7 @@ function buildResumeHtml(text, filename) {
   while (i < rawLines.length && !rawLines[i]) i++;
 
   // ── 2. Parse into sections, skipping SUMMARY/OBJECTIVE ──
-  const SKIP_SECTIONS = /^(SUMMARY|OBJECTIVE|PROFESSIONAL SUMMARY)$/i;
+  const SKIP_SECTIONS = /^(SUMMARY|OBJECTIVE|PROFESSIONAL SUMMARY|PROJECT\s+LIFE\s*CYCLE\.?|SDLC\.?)$/i;
   const sections = [];
   let curSection = null;
 
