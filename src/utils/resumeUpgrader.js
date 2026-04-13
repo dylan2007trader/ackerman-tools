@@ -1819,19 +1819,16 @@ function buildResumeHtml(text, filename) {
   }
 
   // Four spacing presets — scales from ultra-tight for heavy resumes to generous for sparse ones.
-  // Ultra-dense (≥65 lines): absolute minimum spacing, smaller font.
-  // Dense (≥50 lines): tight, everything packed in.
-  // Medium (35–49 lines): moderate spacing.
-  // Sparse (<35 lines): generous spacing to fill full page height.
+  // JS auto-fit (in the popup) will zoom any remaining overflow to guarantee one page.
   let sp;
-  if (contentLineCount >= 65) {
-    sp = { lh: 1.1,  secGap: "3px",  bulletMb: "0px", jobGap: "2px",  ruleMb: "2px", bodyV: "0.35in", bodyH: "0.4in",  namePt: "18pt", headerMb: "3px", fontSize: "9.5pt"  };
-  } else if (contentLineCount >= 50) {
-    sp = { lh: 1.2,  secGap: "5px",  bulletMb: "1px", jobGap: "3px",  ruleMb: "3px", bodyV: "0.4in",  bodyH: "0.45in", namePt: "20pt", headerMb: "4px", fontSize: "10pt"   };
-  } else if (contentLineCount >= 35) {
-    sp = { lh: 1.35, secGap: "9px",  bulletMb: "3px", jobGap: "7px",  ruleMb: "5px", bodyV: "0.45in", bodyH: "0.5in",  namePt: "21pt", headerMb: "6px", fontSize: "10.5pt" };
+  if (contentLineCount >= 60) {
+    sp = { lh: 1.1,  secGap: "2px",  bulletMb: "0px", jobGap: "2px",  ruleMb: "2px", bodyV: "0.3in",  bodyH: "0.35in", namePt: "17pt", headerMb: "2px",  fontSize: "9pt"    };
+  } else if (contentLineCount >= 45) {
+    sp = { lh: 1.15, secGap: "4px",  bulletMb: "1px", jobGap: "3px",  ruleMb: "2px", bodyV: "0.35in", bodyH: "0.4in",  namePt: "18pt", headerMb: "3px",  fontSize: "9.5pt"  };
+  } else if (contentLineCount >= 30) {
+    sp = { lh: 1.25, secGap: "7px",  bulletMb: "2px", jobGap: "5px",  ruleMb: "4px", bodyV: "0.4in",  bodyH: "0.45in", namePt: "20pt", headerMb: "5px",  fontSize: "10pt"   };
   } else {
-    sp = { lh: 1.6,  secGap: "16px", bulletMb: "5px", jobGap: "13px", ruleMb: "8px", bodyV: "0.55in", bodyH: "0.55in", namePt: "22pt", headerMb: "10px", fontSize: "10.5pt" };
+    sp = { lh: 1.45, secGap: "12px", bulletMb: "4px", jobGap: "10px", ruleMb: "6px", bodyV: "0.5in",  bodyH: "0.5in",  namePt: "21pt", headerMb: "8px",  fontSize: "10.5pt" };
   }
 
   // ── 3. Render header ──
@@ -2007,6 +2004,28 @@ function buildResumeHtml(text, filename) {
 <body>
 ${body}
 </body>
+<script>
+// Auto-fit: if content exceeds one letter page (11in @ 96dpi = 1056px), zoom to fit.
+(function () {
+  var PAGE_H = 1056;
+  function fit() {
+    var h = document.documentElement.scrollHeight;
+    if (h > PAGE_H + 4) {
+      var zoom = PAGE_H / h;
+      document.body.style.zoom = zoom;
+      // Also inject a print rule so Chrome respects it when printing to PDF
+      var s = document.createElement('style');
+      s.textContent = '@media print { body { zoom: ' + zoom + ' !important; } }';
+      document.head.appendChild(s);
+    }
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', fit);
+  } else {
+    fit();
+  }
+})();
+</script>
 </html>`;
 }
 
