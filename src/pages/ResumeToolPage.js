@@ -266,6 +266,7 @@ export default function ResumeToolPage() {
   return (
     <div style={styles.page}>
       <div style={styles.hero}>
+        <a href="/" style={{ display: "inline-block", marginBottom: "12px", color: "#94a3b8", fontSize: "13px", textDecoration: "none" }}>← Back to Ackerman Tools</a>
         <div style={styles.heroBadge}>resume builder + cover letter generator</div>
         <h1 style={styles.heroTitle}>Resume grader</h1>
         <p style={styles.heroSubtitle}>
@@ -284,7 +285,7 @@ export default function ResumeToolPage() {
         ? "Premium is active on your account. You can now generate upgraded resume and cover letter outputs."
         : "Start with the free grader, then unlock one stronger reusable resume plus unlimited tailored cover letters for related jobs."
     }
-    priceText="$9 one-time"
+    priceText="$10/month"
     buttonText={isPremium ? "Premium Active" : "Unlock Premium"}
   />
 </div>
@@ -370,7 +371,7 @@ export default function ResumeToolPage() {
                 <div style={{ fontWeight: 800, marginBottom: 8, color: "#fde68a" }}>
                   Unlock to access cover letter generation
                 </div>
-                Paste a job description here after unlocking premium ($9 one-time).
+                Paste a job description here after unlocking premium ($10/month).
                 The cover letter generator will write a tailored 3-paragraph letter
                 using your resume and this job description.
                 <div style={{ marginTop: 14 }}>
@@ -379,7 +380,7 @@ export default function ResumeToolPage() {
                     onClick={handlePremiumUpgrade}
                     style={styles.unlockButton}
                   >
-                    Unlock Premium — $9
+                    Unlock Premium — $10/mo
                   </button>
                 </div>
               </div>
@@ -741,7 +742,7 @@ export default function ResumeToolPage() {
             </div>
             <p style={styles.generateText}>
               Generate an upgraded version of your resume and a tailored cover letter.
-              Both are unlimited after the one-time $9 purchase.
+              Both are unlimited with the $10/month subscription.
             </p>
             <div style={styles.generateButtonRow}>
               <button
@@ -910,9 +911,9 @@ export default function ResumeToolPage() {
             subtitle={
               isPremium
                 ? "Premium is active. Generate your upgraded resume and unlimited cover letters above."
-                : "One $9 payment unlocks an upgraded version of your resume plus unlimited tailored cover letters for any job you apply to."
+                : "A $10/month subscription unlocks an upgraded version of your resume plus unlimited tailored cover letters for any job you apply to."
             }
-            priceText="$9 one-time"
+            priceText="$10/month"
             buttonText="Unlock Premium"
           />
         </div>
