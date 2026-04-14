@@ -15,7 +15,7 @@ const tools = [
     title: "Resume Upgrade + Cover Letter Generator",
     badge: "Live Now",
     description:
-      "Try the free resume grader first. Then unlock unlimited upgraded resumes and unlimited tailored cover letters after one payment.",
+      "Try the free resume grader first. Then unlock unlimited upgraded resumes and unlimited tailored cover letters for $10/month.",
     href: "/resume-builder#grader",
     primary: "Open the live app",
     featured: true,
@@ -96,7 +96,7 @@ return (
             <h1>Get an upgraded resume and tailored cover letters now.</h1>
             <p className="hub-hero-text">
               Start with the free resume grader. Then unlock unlimited upgraded
-              resumes and unlimited tailored cover letters with one payment
+              resumes and unlimited tailored cover letters for $10/month,
               attached to one account.
             </p>
 
@@ -125,9 +125,9 @@ return (
                 <div className="hub-proof-label">Resume grader first</div>
               </div>
               <div className="hub-proof-card hub-proof-card-strong">
-                <div className="hub-proof-number">$9</div>
+                <div className="hub-proof-number">$10/mo</div>
                 <div className="hub-proof-label">
-                  One-time unlimited premium access
+                  Unlimited premium access
                 </div>
               </div>
               <div className="hub-proof-card">
@@ -180,9 +180,9 @@ return (
               </p>
             </div>
             <div className="hub-value-card">
-              <h3>2. Upgrade once</h3>
+              <h3>2. Unlock premium</h3>
               <p>
-                Premium is a one-time unlock that gives the same signed-in user
+                Premium is $10/month and gives the same signed-in user
                 unlimited upgraded resumes.
               </p>
             </div>
@@ -276,7 +276,7 @@ return (
                 <p>
                   {hasResumePremium
                     ? "Premium is active. Open the resume tool to generate upgraded resumes and cover letters."
-                    : "Upgrade once through Stripe to unlock unlimited premium resumes and cover letters on this account."}
+                    : "Subscribe for $10/month through Stripe to unlock unlimited premium resumes and cover letters on this account."}
                 </p>
 
                 <a className="hub-btn hub-btn-primary" href="/resume-builder#grader">
