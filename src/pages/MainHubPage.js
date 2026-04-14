@@ -1,14 +1,12 @@
 import React, { useMemo, useState } from "react";
 import "./MainHubPage.css";
 import AuthModal from "../components/auth/AuthModal";
-import { BRAND_LOGO } from "../components/BrandLogo";
 import {
   APP_IDS,
   APP_META,
   getCurrentUser,
   getPurchasedApps,
   logoutUser,
-  purchaseAppForCurrentUser,
 } from "../services/accountStore";
 
 const tools = [
@@ -50,7 +48,6 @@ export default function MainHubPage() {
   const [authMode, setAuthMode] = useState("login");
   const [message, setMessage] = useState("");
   const [currentUser, setCurrentUser] = useState(getCurrentUser());
-  const [isUnlocking, setIsUnlocking] = useState(false);
 
   const purchasedApps = useMemo(() => getPurchasedApps(), [currentUser]);
   const hasResumePremium = purchasedApps.includes(APP_IDS.RESUME_SUITE);
@@ -73,40 +70,11 @@ export default function MainHubPage() {
     setMessage("Signed out.");
   }
 
-  async function handleTestUnlockResumePremium() {
-    if (!currentUser) {
-      setMessage("Sign in first so premium can attach to the right account.");
-      openAuth("login");
-      return;
-    }
-
-    setIsUnlocking(true);
-    setMessage("");
-
-    try {
-      const result = await purchaseAppForCurrentUser(APP_IDS.RESUME_SUITE);
-      setMessage(
-        result?.message ||
-          "Resume premium unlocked for this signed-in account."
-      );
-      setCurrentUser(getCurrentUser());
-    } catch (error) {
-      setMessage("Could not unlock premium right now.");
-    } finally {
-      setIsUnlocking(false);
-    }
-  }
-
-  return (
+return (
     <div className="hub-page">
       <header className="hub-header">
         <nav className="hub-nav">
           <a className="hub-brand-wrap" href="/">
-            <img
-              className="hub-logo"
-              src={BRAND_LOGO}
-              alt="Ackerman Tools logo"
-            />
             <div>
               <div className="hub-brand">Ackerman Tools</div>
               <div className="hub-subbrand">
@@ -140,23 +108,13 @@ export default function MainHubPage() {
                 Try the free resume grader
               </a>
 
-              {!currentUser ? (
+              {!currentUser && (
                 <button
                   className="hub-btn hub-btn-secondary"
                   type="button"
                   onClick={() => openAuth("signup")}
                 >
                   Create account or sign in
-                </button>
-              ) : (
-                <button
-                  className="hub-btn hub-btn-secondary"
-                  type="button"
-                  onClick={handleTestUnlockResumePremium}
-                >
-                  {hasResumePremium
-                    ? "Resume premium already active"
-                    : "Test unlock resume premium"}
                 </button>
               )}
             </div>
@@ -261,40 +219,17 @@ export default function MainHubPage() {
                     {purchasedApps.length ? purchasedApps.join(", ") : "none yet"}
                   </p>
 
-                  <div
-                    style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: "12px",
-                      marginTop: "16px",
-                    }}
-                  >
-                    <button
-                      className="hub-btn hub-btn-primary"
-                      type="button"
-                      onClick={handleTestUnlockResumePremium}
-                      disabled={isUnlocking || hasResumePremium}
-                      style={{
-                        opacity:
-                          isUnlocking || hasResumePremium ? 0.75 : 1,
-                        cursor:
-                          isUnlocking || hasResumePremium
-                            ? "not-allowed"
-                            : "pointer",
-                      }}
-                    >
-                      {isUnlocking
-                        ? "Unlocking..."
-                        : hasResumePremium
-                        ? "Resume premium active"
-                        : "Test unlock resume premium"}
-                    </button>
-
-                    <button
-                      className="hub-btn hub-btn-secondary"
-                      type="button"
-                      onClick={handleLogout}
-                    >
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "12px", marginTop: "16px" }}>
+                    {hasResumePremium ? (
+                      <a className="hub-btn hub-btn-primary" href="/resume-builder">
+                        Open resume app
+                      </a>
+                    ) : (
+                      <a className="hub-btn hub-btn-primary" href="/resume-builder#grader">
+                        Try the free grader
+                      </a>
+                    )}
+                    <button className="hub-btn hub-btn-secondary" type="button" onClick={handleLogout}>
                       Sign out
                     </button>
                   </div>
@@ -340,8 +275,8 @@ export default function MainHubPage() {
                 </h3>
                 <p>
                   {hasResumePremium
-                    ? "You can now open the resume tool and test the premium resume and cover letter page flow."
-                    : "For testing, use the unlock button on this hub page so the premium access gets attached to this account."}
+                    ? "Premium is active. Open the resume tool to generate upgraded resumes and cover letters."
+                    : "Upgrade once through Stripe to unlock unlimited premium resumes and cover letters on this account."}
                 </p>
 
                 <a className="hub-btn hub-btn-primary" href="/resume-builder#grader">

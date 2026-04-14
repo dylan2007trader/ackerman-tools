@@ -631,6 +631,26 @@ function buildCoverLetterHtml(letter) {
   <div class="sign-gap"></div>
   <p>${esc(letter.signature)}</p>
 </body>
+<script>
+(function () {
+  var PAGE_H = 1056;
+  function fit() {
+    var h = document.documentElement.scrollHeight;
+    if (h > PAGE_H + 4) {
+      var zoom = PAGE_H / h;
+      document.body.style.zoom = zoom;
+      var s = document.createElement('style');
+      s.textContent = '@media print { body { zoom: ' + zoom + ' !important; } }';
+      document.head.appendChild(s);
+    }
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', fit);
+  } else {
+    fit();
+  }
+})();
+</script>
 </html>`;
 }
 
@@ -764,14 +784,16 @@ export async function downloadCoverLetterDocx(letter, filename = "cover_letter.d
   document.body.removeChild(a); URL.revokeObjectURL(url);
 }
 
-/** Open print dialog — saves as PDF, fits one page */
+/** Open PDF preview in new tab — user prints with Ctrl+P to save as PDF */
 export function printCoverLetterPdf(letter) {
   const html = buildCoverLetterHtml(letter);
-  const win = window.open("", "_blank", "width=860,height=1100");
-  if (!win) return;
-  win.document.open();
-  win.document.write(html);
-  win.document.close();
-  win.focus();
-  setTimeout(() => win.print(), 400);
+  const blob = new Blob([html], { type: "text/html" });
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, "_blank");
+  if (!win) {
+    URL.revokeObjectURL(url);
+    alert("Popup blocked — please allow popups for this site, then try again.");
+    return;
+  }
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
 }

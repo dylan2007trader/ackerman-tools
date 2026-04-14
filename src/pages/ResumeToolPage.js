@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import mammoth from "mammoth";
 import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf";
@@ -131,11 +131,36 @@ function Pill({ children, tone = "default" }) {
 }
 
 export default function ResumeToolPage() {
-  const [role, setRole] = useState("software engineer");
-  const [targetType, setTargetType] = useState("job");
-  const [resumeText, setResumeText] = useState("");
-  const [jobDescription, setJobDescription] = useState("");
-  const [fileName, setFileName] = useState("");
+  // ── Persisted state (survives refresh via localStorage) ──────────────────
+  function load(key, fallback) {
+    try { const v = localStorage.getItem(key); return v !== null ? JSON.parse(v) : fallback; } catch { return fallback; }
+  }
+  function save(key, value) {
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
+  }
+
+  const [role, setRoleRaw] = useState(() => load("rt_role", "software engineer"));
+  const [targetType, setTargetTypeRaw] = useState(() => load("rt_targetType", "job"));
+  const [resumeText, setResumeTextRaw] = useState(() => load("rt_resumeText", ""));
+  const [jobDescription, setJobDescriptionRaw] = useState(() => load("rt_jobDescription", ""));
+  const [fileName, setFileNameRaw] = useState(() => load("rt_fileName", ""));
+  const [generatedResume, setGeneratedResumeRaw] = useState(() => load("rt_generatedResume", ""));
+  const [coverCompany, setCoverCompanyRaw] = useState(() => load("rt_coverCompany", ""));
+  const [coverJobTitle, setCoverJobTitleRaw] = useState(() => load("rt_coverJobTitle", ""));
+  const [activeSection, setActiveSectionRaw] = useState(() => load("rt_activeSection", "grader"));
+
+  // Wrap setters to auto-save on every change
+  const setRole = (v) => { setRoleRaw(v); save("rt_role", v); };
+  const setTargetType = (v) => { setTargetTypeRaw(v); save("rt_targetType", v); };
+  const setResumeText = (v) => { setResumeTextRaw(v); save("rt_resumeText", v); };
+  const setJobDescription = (v) => { setJobDescriptionRaw(v); save("rt_jobDescription", v); };
+  const setFileName = (v) => { setFileNameRaw(v); save("rt_fileName", v); };
+  const setGeneratedResume = (v) => { setGeneratedResumeRaw(v); save("rt_generatedResume", v); };
+  const setCoverCompany = (v) => { setCoverCompanyRaw(v); save("rt_coverCompany", v); };
+  const setCoverJobTitle = (v) => { setCoverJobTitleRaw(v); save("rt_coverJobTitle", v); };
+  const setActiveSection = (v) => { setActiveSectionRaw(v); save("rt_activeSection", v); };
+
+  // ── Transient state (no need to persist) ─────────────────────────────────
   const [analysis, setAnalysis] = useState(null);
   const [isLoadingFile, setIsLoadingFile] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -144,17 +169,13 @@ export default function ResumeToolPage() {
 
   // Premium output state
   const [premiumTab, setPremiumTab] = useState("resume");
-  const [generatedResume, setGeneratedResume] = useState("");
   const [missingItems, setMissingItems] = useState([]);
   const [isGeneratingResume, setIsGeneratingResume] = useState(false);
   const [generatedCoverLetter, setGeneratedCoverLetter] = useState(null);
   const [isGeneratingCoverLetter, setIsGeneratingCoverLetter] = useState(false);
   const [copyNotice, setCopyNotice] = useState("");
   const [authOpen, setAuthOpen] = useState(false);
-  const [coverCompany, setCoverCompany] = useState("");
-  const [coverJobTitle, setCoverJobTitle] = useState("");
   const [suggestions, setSuggestions] = useState([]);
-  const [activeSection, setActiveSection] = useState("grader");
 
   const [currentUser, setCurrentUser] = useState(getCurrentUser());
   const isPremium = hasPurchasedApp(APP_IDS.RESUME_SUITE);

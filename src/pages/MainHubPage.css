@@ -1,259 +1,447 @@
-:root {
-  --hub-bg: #f5f7fb;
-  --hub-surface: #ffffff;
-  --hub-soft: #edf1ff;
-  --hub-border: #d9e1f2;
-  --hub-text: #101828;
-  --hub-muted: #5b6576;
-  --hub-primary: #3346d3;
-  --hub-primary-dark: #2435af;
-  --hub-shadow: 0 18px 40px rgba(17, 24, 39, 0.08);
-}
-
-* {
-  box-sizing: border-box;
-}
+/* ── Reset ───────────────────────────────────────────── */
+* { box-sizing: border-box; }
 
 body {
   margin: 0;
-  background: var(--hub-bg);
-  color: var(--hub-text);
   font-family: Inter, Arial, Helvetica, sans-serif;
+  background: #020617;
+  color: #f8fafc;
 }
 
+/* ── Page shell — exact match to ResumeToolPage styles.page ── */
 .hub-page {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 24px 18px 70px;
+  min-height: 100vh;
+  background: radial-gradient(circle at top, rgba(30,41,59,0.65) 0%, rgba(2,6,23,1) 45%, rgba(2,6,23,1) 100%);
+  padding: 32px 20px 80px;
+  color: #f8fafc;
 }
 
-.hub-nav,
-.hub-hero,
-.hub-proof-row,
-.hub-tools-grid,
-.hub-value-grid,
-.hub-account-grid {
-  display: grid;
-  gap: 22px;
+/* ── Nav ─────────────────────────────────────────────── */
+.hub-header {
+  max-width: 1100px;
+  margin: 0 auto;
 }
 
 .hub-nav {
-  grid-template-columns: 1fr auto;
+  display: flex;
+  justify-content: space-between;
   align-items: center;
+  margin-bottom: 40px;
 }
 
 .hub-brand-wrap {
   display: inline-flex;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
   text-decoration: none;
-  color: inherit;
+  color: #f8fafc;
 }
 
-.hub-logo {
-  width: 66px;
-  height: 66px;
-  object-fit: contain;
-  border-radius: 18px;
-  background: #ffffff;
-  box-shadow: var(--hub-shadow);
-}
+.hub-logo { display: none; }
 
 .hub-brand {
-  font-size: 1.8rem;
+  font-size: 1.15rem;
   font-weight: 800;
-  color: var(--hub-primary);
+  color: #a5b4fc;
+  letter-spacing: -0.01em;
 }
 
-.hub-subbrand,
-.hub-hero-text,
-.hub-section-top p,
-.hub-tool-card p,
-.hub-account-card p,
-.hub-feature-panel p,
-.hub-empty-copy,
-.hub-purchase-sub {
-  color: var(--hub-muted);
-  line-height: 1.7;
+.hub-subbrand {
+  font-size: 0.78rem;
+  color: #94a3b8;
+  margin-top: 2px;
 }
 
 .hub-nav-links {
   display: flex;
-  gap: 16px;
+  gap: 20px;
+  font-size: 0.88rem;
   font-weight: 600;
 }
 
-.hub-kicker,
-.hub-feature-label {
-  display: inline-block;
-  font-size: 0.82rem;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  font-weight: 800;
-  color: var(--hub-primary);
+.hub-nav-links a {
+  color: #94a3b8;
+  text-decoration: none;
+  transition: color 0.15s;
 }
 
+.hub-nav-links a:hover { color: #f8fafc; }
+
+/* ── Kicker badge — exact match to styles.heroBadge ──── */
+.hub-kicker,
+.hub-feature-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(99, 102, 241, 0.12);
+  color: #c7d2fe;
+  border: 1px solid rgba(99, 102, 241, 0.28);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 14px;
+}
+
+/* ── Hero layout ─────────────────────────────────────── */
 .hub-hero {
-  margin-top: 24px;
-  grid-template-columns: 1.12fr 0.88fr;
-  align-items: stretch;
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 28px;
+  align-items: start;
+  margin-bottom: 52px;
 }
 
 .hub-hero-copy h1 {
-  font-size: clamp(2.9rem, 5.8vw, 5.5rem);
-  line-height: 0.95;
-  margin: 14px 0 18px;
+  font-size: clamp(2.2rem, 4.5vw, 3.8rem);
+  line-height: 1.05;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  margin: 0 0 16px;
 }
 
-.hub-hero-actions,
-.hub-tool-top,
-.hub-proof-row,
-.hub-logged-row,
-.hub-feature-list {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  align-items: center;
+/* exact match to styles.heroSubtitle */
+.hub-hero-text {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.7;
+  color: #cbd5e1;
+  max-width: 520px;
 }
 
 .hub-hero-actions {
-  margin: 24px 0 18px;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 24px 0 20px;
 }
 
-.hub-btn,
-.hub-auth-tab,
-.hub-input {
-  font: inherit;
+/* ── Proof row ───────────────────────────────────────── */
+.hub-proof-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
 }
 
+/* exact match to styles.controlCard */
+.hub-proof-card {
+  background: rgba(255,255,255,0.025);
+  border: 1px solid rgba(148,163,184,0.12);
+  border-radius: 20px;
+  padding: 18px;
+  text-align: center;
+}
+
+.hub-proof-card-strong {
+  background: rgba(99,102,241,0.10);
+  border-color: rgba(99,102,241,0.30);
+}
+
+.hub-proof-number {
+  font-size: 1.7rem;
+  font-weight: 900;
+  color: #a5b4fc;
+}
+
+.hub-proof-label {
+  font-size: 0.78rem;
+  color: #94a3b8;
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+/* ── Feature panel — exact match to styles.panel ─────── */
+.hub-feature-panel {
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(148,163,184,0.14);
+  border-radius: 26px;
+  padding: 28px;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.26);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.hub-feature-panel h2 {
+  font-size: 1.25rem;
+  font-weight: 800;
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+
+.hub-feature-panel p {
+  color: #94a3b8;
+  line-height: 1.65;
+  margin: 0;
+  font-size: 0.92rem;
+}
+
+/* exact match to styles.freeBadge */
+.hub-feature-list { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.hub-feature-pill {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: rgba(34,197,94,0.15);
+  color: #86efac;
+  border: 1px solid rgba(34,197,94,0.30);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* ── Buttons — exact match to styles.primaryButton / unlockButton ── */
 .hub-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 0;
-  border-radius: 999px;
-  padding: 14px 18px;
+  border: none;
+  border-radius: 16px;
+  padding: 14px 22px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 800;
   cursor: pointer;
   text-decoration: none;
-  transition: transform 0.18s ease;
+  transition: opacity 0.15s, transform 0.15s;
 }
 
-.hub-btn:hover,
-.hub-auth-tab:hover {
-  transform: translateY(-1px);
-}
+.hub-btn:hover { opacity: 0.88; transform: translateY(-1px); }
 
 .hub-btn-primary {
-  background: linear-gradient(
-    135deg,
-    var(--hub-primary),
-    var(--hub-primary-dark)
-  );
-  color: #ffffff;
-  font-weight: 800;
-  box-shadow: 0 14px 28px rgba(51, 70, 211, 0.24);
+  background: linear-gradient(135deg, #7c3aed 0%, #2563eb 100%);
+  color: #fff;
+  box-shadow: 0 10px 24px rgba(37,99,235,0.24);
 }
 
-.hub-btn-secondary,
-.hub-btn-muted {
-  background: #ffffff;
-  border: 1px solid var(--hub-border);
-  color: var(--hub-text);
+/* exact match to styles.sectionTab */
+.hub-btn-secondary {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.10);
+  color: #f8fafc;
+}
+
+.hub-btn-full { width: 100%; }
+
+.hub-btn-disabled {
+  background: rgba(255,255,255,0.025);
+  border: 1px solid rgba(148,163,184,0.12);
+  color: #94a3b8;
+  cursor: not-allowed;
+  border-radius: 16px;
+  padding: 14px 22px;
+  font: inherit;
+  font-size: 15px;
   font-weight: 700;
 }
 
-.hub-btn-full {
-  width: 100%;
+/* ── Main ────────────────────────────────────────────── */
+.hub-main {
+  max-width: 1100px;
+  margin: 0 auto;
 }
 
-.hub-proof-row {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
+.hub-section { margin-bottom: 56px; }
 
-.hub-proof-card,
-.hub-feature-panel,
-.hub-value-card,
-.hub-account-card,
-.hub-tool-card {
-  background: var(--hub-surface);
-  border: 1px solid var(--hub-border);
-  border-radius: 28px;
-  padding: 24px;
-  box-shadow: var(--hub-shadow);
-}
+.hub-section-top { margin-bottom: 24px; }
 
-.hub-proof-card-strong,
-.hub-account-card-strong,
-.hub-tool-card-featured {
-  background: linear-gradient(145deg, #edf1ff, #ffffff);
-}
-
-.hub-proof-number {
-  font-size: 1.8rem;
+.hub-section-top h2 {
+  font-size: 1.75rem;
   font-weight: 900;
-  color: var(--hub-primary);
+  letter-spacing: -0.02em;
+  margin: 8px 0 10px;
 }
 
-.hub-feature-panel h2,
-.hub-section-top h2,
-.hub-value-card h3,
-.hub-account-card h3,
-.hub-tool-card h3 {
-  margin: 12px 0 8px;
+.hub-section-top p {
+  color: #94a3b8;
+  line-height: 1.7;
+  max-width: 540px;
+  margin: 0;
+  font-size: 0.95rem;
 }
 
-.hub-feature-pill,
+/* ── Value grid — exact match to styles.sectionTab ────── */
+.hub-value-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.hub-value-card {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 16px;
+  padding: 22px;
+}
+
+.hub-value-card h3 {
+  font-size: 15px;
+  font-weight: 800;
+  margin: 0 0 8px;
+  color: #a5b4fc;
+  letter-spacing: -0.01em;
+}
+
+.hub-value-card p {
+  color: #94a3b8;
+  line-height: 1.65;
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+/* ── Account ─────────────────────────────────────────── */
+.hub-account-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+/* exact match to styles.dashboardCard */
+.hub-account-card,
+.hub-auth-card {
+  background: linear-gradient(180deg, rgba(15,23,42,0.92) 0%, rgba(10,15,27,0.98) 100%);
+  border: 1px solid rgba(148,163,184,0.14);
+  border-radius: 22px;
+  padding: 24px;
+}
+
+.hub-account-label {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #94a3b8;
+  margin-bottom: 10px;
+}
+
+.hub-account-card h3, .hub-auth-card h3 {
+  font-size: 1rem;
+  font-weight: 800;
+  margin: 0 0 8px;
+}
+
+.hub-account-card p, .hub-auth-card p {
+  color: #94a3b8;
+  line-height: 1.65;
+  margin: 0 0 16px;
+  font-size: 0.9rem;
+}
+
+/* ── Tools grid — exact match to styles.sectionTabActive for featured ── */
+.hub-tools-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.hub-tool-card {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 16px;
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.hub-tool-card-featured {
+  background: rgba(99,102,241,0.14);
+  border: 1px solid rgba(99,102,241,0.45);
+}
+
+.hub-tool-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.hub-week {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* exact match to styles.freeBadge / premiumBadgeLocked */
 .hub-badge {
   display: inline-flex;
   align-items: center;
-  padding: 10px 14px;
+  padding: 3px 9px;
   border-radius: 999px;
-  font-weight: 700;
-}
-
-.hub-feature-pill {
-  background: var(--hub-soft);
-  color: var(--hub-primary-dark);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .hub-badge-live {
-  background: #e8f9ef;
-  color: #0f8f54;
+  background: rgba(34,197,94,0.15);
+  color: #86efac;
+  border: 1px solid rgba(34,197,94,0.30);
 }
 
 .hub-badge-soon {
-  background: #f3f4f6;
-  color: #5b6576;
+  background: rgba(100,116,139,0.15);
+  color: #94a3b8;
+  border: 1px solid rgba(100,116,139,0.25);
 }
 
-.hub-main {
-  margin-top: 28px;
+.hub-tool-card h3 {
+  font-size: 15px;
+  font-weight: 800;
+  margin: 0;
+  letter-spacing: -0.01em;
 }
 
-.hub-section + .hub-section {
-  margin-top: 28px;
+.hub-tool-card p {
+  color: #94a3b8;
+  line-height: 1.65;
+  margin: 0;
+  font-size: 0.9rem;
+  flex: 1;
 }
 
-.hub-section-emphasis {
-  padding-top: 10px;
+/* exact match to styles.notice */
+.hub-message {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(59,130,246,0.10);
+  border: 1px solid rgba(59,130,246,0.28);
+  color: #bfdbfe;
+  font-size: 14px;
+  line-height: 1.6;
 }
 
-.hub-value-grid,
-.hub-account-grid,
-.hub-tools-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+/* ── Inputs ──────────────────────────────────────────── */
+.hub-input {
+  width: 100%;
+  border: 1px solid rgba(148,163,184,0.18);
+  border-radius: 14px;
+  padding: 13px 16px;
+  margin-bottom: 10px;
+  background: rgba(2,6,23,0.72);
+  color: #f8fafc;
+  font: inherit;
+  font-size: 15px;
+  outline: none;
 }
 
-.hub-account-grid {
-  grid-template-columns: 1fr 1fr;
-}
+.hub-input::placeholder { color: #94a3b8; }
+.hub-input:focus { border-color: rgba(99,102,241,0.5); }
 
 .hub-auth-toggle {
   display: inline-flex;
   gap: 4px;
   padding: 4px;
   border-radius: 999px;
-  background: var(--hub-soft);
+  background: rgba(255,255,255,0.04);
   margin: 8px 0 14px;
 }
 
@@ -261,84 +449,30 @@ body {
   border: 0;
   background: transparent;
   border-radius: 999px;
-  padding: 11px 14px;
+  padding: 10px 14px;
   cursor: pointer;
-  color: var(--hub-muted);
+  color: #94a3b8;
   font-weight: 700;
+  font: inherit;
+  transition: background 0.15s;
 }
 
 .hub-auth-tab-active {
-  background: #ffffff;
-  color: var(--hub-text);
-  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.08);
+  background: rgba(255,255,255,0.08);
+  color: #f8fafc;
 }
 
-.hub-input {
-  width: 100%;
-  border: 1px solid var(--hub-border);
-  border-radius: 18px;
-  padding: 14px 16px;
-  margin-bottom: 10px;
-  background: #fbfcff;
-}
-
-.hub-inline-message {
-  margin-top: 14px;
-  padding: 12px 14px;
-  border-radius: 16px;
-  background: var(--hub-soft);
-  color: var(--hub-primary-dark);
-  font-weight: 600;
-}
-
-.hub-purchase-item {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  align-items: center;
-  padding: 18px;
-  border-radius: 20px;
-  border: 1px solid var(--hub-border);
-  background: #fbfcff;
-}
-
-.hub-week {
-  font-size: 0.92rem;
-  font-weight: 800;
-  color: var(--hub-primary);
-}
-
+/* ── Responsive ──────────────────────────────────────── */
 @media (max-width: 1080px) {
   .hub-hero,
   .hub-value-grid,
-  .hub-account-grid,
   .hub-tools-grid,
-  .hub-proof-row {
-    grid-template-columns: 1fr;
-  }
+  .hub-account-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 760px) {
-  .hub-page {
-    padding: 18px 14px 50px;
-  }
-
-  .hub-nav {
-    grid-template-columns: 1fr;
-    gap: 16px;
-  }
-
-  .hub-nav-links {
-    flex-wrap: wrap;
-  }
-
-  .hub-hero-copy h1 {
-    font-size: 3.2rem;
-  }
-
-  .hub-purchase-item,
-  .hub-logged-row {
-    flex-direction: column;
-    align-items: flex-start;
-  }
+  .hub-page { padding: 20px 14px 60px; }
+  .hub-nav { flex-direction: column; align-items: flex-start; gap: 14px; }
+  .hub-hero-copy h1 { font-size: 2.2rem; }
+  .hub-proof-row { grid-template-columns: 1fr; }
 }

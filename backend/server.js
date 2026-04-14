@@ -356,33 +356,7 @@ app.get("/api/purchases", requireAuth, async (req, res) => {
   }
 });
 
-app.post("/api/dev/grant-app", requireAuth, async (req, res) => {
-  try {
-    if (
-      process.env.NODE_ENV === "production" &&
-      process.env.ALLOW_DEV_GRANT !== "true"
-    ) {
-      return res
-        .status(403)
-        .json({ ok: false, message: "Dev grant is disabled in production." });
-    }
-
-    const appId = req.body?.appId || APP_IDS.RESUME_SUITE;
-    await grantPurchase({ userId: req.auth.userId, appId, provider: "demo" });
-    const user = await getUserById(req.auth.userId);
-    const purchasedApps = await getPurchasedApps(req.auth.userId);
-    return res.json({
-      ok: true,
-      message: "Premium access granted in demo mode.",
-      user: sanitizeUser(user, purchasedApps),
-    });
-  } catch (error) {
-    console.error(error);
-    return res
-      .status(500)
-      .json({ ok: false, message: "Could not grant premium in demo mode." });
-  }
-});
+// Dev grant endpoint removed — premium requires Stripe payment only.
 
 app.post("/api/checkout/create-session", requireAuth, async (req, res) => {
   try {
@@ -406,13 +380,9 @@ app.post("/api/checkout/create-session", requireAuth, async (req, res) => {
 
     const priceId = APP_PRICE_IDS[appId];
     if (!stripe || !priceId) {
-      await grantPurchase({ userId: user.id, appId, provider: "demo" });
-      const purchasedApps = await getPurchasedApps(user.id);
-      return res.json({
-        ok: true,
-        demoGranted: true,
-        message: "Demo premium granted because Stripe is not configured yet.",
-        user: sanitizeUser(user, purchasedApps),
+      return res.status(503).json({
+        ok: false,
+        message: "Payments are not configured yet. Please try again later.",
       });
     }
 

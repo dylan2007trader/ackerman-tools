@@ -1716,20 +1716,10 @@ function renderProjects(lines) {
         i++;
       }
 
-      // Render all bullets first (projects use "- " dash style like Terrence Kuo)
+      // Render bullets (projects use "- " dash style like Terrence Kuo)
       html += projectBullets
         .map((b) => `<div class="dash-bullet">- ${esc(b)}</div>`)
         .join("");
-
-      // Then render exactly ONE Utilized: line at the end
-      if (explicitUtilized) {
-        html += `<div class="utilized"><span class="edu-label">Utilized:</span> ${esc(explicitUtilized.replace(/^utilized\s*:\s*/i, ""))}</div>`;
-      } else if (projectBullets.length > 0) {
-        const tech = extractTechFromBullets(projectBullets);
-        if (tech.length) {
-          html += `<div class="utilized"><span class="edu-label">Utilized:</span> ${esc(tech.join(", "))}</div>`;
-        }
-      }
 
       html += `<div class="job-gap"></div>`;
     } else if (/^[•\-–*]\s/.test(line)) {
@@ -1744,10 +1734,43 @@ function renderProjects(lines) {
 }
 
 function renderSkills(lines, fullText) {
-  const { languages, frameworksTools, data, concepts } = splitSkillsCategorized(lines);
+  // Sanitize double colons
+  const cleanLines = lines
+    .map((l) => l.replace(/::/g, ":"))
+    .filter((l) => l.trim() && !/^additional ats keywords/i.test(l));
+
+  // Detect whether the source already has labeled sections ("Label: skill, skill, ...")
+  // A line is "labeled" if it has a colon and the part before the colon is short (≤30 chars)
+  // and doesn't look like a skill itself (e.g. "Node.js: ..." would be a false positive, but
+  // skill names don't typically have colons mid-name)
+  const labeledLines = cleanLines.filter((l) => {
+    const colonIdx = l.indexOf(":");
+    if (colonIdx < 1 || colonIdx > 35) return false;
+    const label = l.slice(0, colonIdx).trim();
+    // Label should be words only, no parentheses or commas (those indicate a skill list)
+    return /^[A-Za-z &\-\/]+$/.test(label);
+  });
+
+  // If more than half the non-empty lines have labels, preserve them verbatim
+  if (labeledLines.length >= Math.max(1, Math.floor(cleanLines.length * 0.5))) {
+    let html = "";
+    for (const line of cleanLines) {
+      const colonIdx = line.indexOf(":");
+      if (colonIdx > 0 && colonIdx <= 35 && /^[A-Za-z &\-\/]+$/.test(line.slice(0, colonIdx).trim())) {
+        const label = line.slice(0, colonIdx).trim();
+        const value = line.slice(colonIdx + 1).trim();
+        html += `<div class="skill-row"><span class="skill-label">${esc(label)}:</span> ${esc(value)}</div>`;
+      } else {
+        html += `<div class="skill-row">${esc(line)}</div>`;
+      }
+    }
+    return html;
+  }
+
+  // No existing labels — auto-categorize into standard buckets
+  const { languages, frameworksTools, data, concepts } = splitSkillsCategorized(cleanLines);
 
   let html = "";
-
   if (languages.length || frameworksTools.length || data.length || concepts.length) {
     if (languages.length)
       html += `<div class="skill-row"><span class="skill-label">Languages:</span> ${esc(languages.join(", "))}</div>`;
@@ -1758,9 +1781,7 @@ function renderSkills(lines, fullText) {
     if (concepts.length)
       html += `<div class="skill-row"><span class="skill-label">Concepts:</span> ${esc(concepts.join(", "))}</div>`;
   } else {
-    // Fallback: render raw lines (minus ATS keywords row)
-    for (const line of lines) {
-      if (!line.trim() || /^additional ats keywords/i.test(line)) continue;
+    for (const line of cleanLines) {
       html += `<div class="skill-row">${esc(line)}</div>`;
     }
   }
@@ -1839,6 +1860,9 @@ function buildResumeHtml(text, filename) {
        .replace(/^GitHub:\s*/i, "github.com/")
        // Fix doubled LinkedIn URLs: linkedin.com/in/https://www.linkedin.com/in/...
        .replace(/linkedin\.com\/in\/https?:\/\/(?:www\.)?linkedin\.com\/in\//i, "linkedin.com/in/")
+       // Strip https://www. or https:// prefix from linkedin/github URLs
+       .replace(/https?:\/\/(?:www\.)?(linkedin\.com\/[^\s•·—–|]+)/gi, "$1")
+       .replace(/https?:\/\/(?:www\.)?(github\.com\/[^\s•·—–|]+)/gi, "$1")
        .split(/\s*[•·—–|]\s*/)
     )
     .map((s) => s.trim())
@@ -2006,12 +2030,14 @@ ${body}
 
 export function downloadResumePdf(text = "", filename = "upgraded_resume.pdf") {
   const html = buildResumeHtml(text, filename);
-  const win = window.open("", "_blank", "width=900,height=1100");
-  if (!win) return;
-  win.document.open();
-  win.document.write(html);
-  win.document.close();
-  win.focus();
-  win.addEventListener("afterprint", () => { win.close(); window.focus(); });
-  setTimeout(() => { win.print(); setTimeout(() => window.focus(), 500); }, 400);
+  const blob = new Blob([html], { type: "text/html" });
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, "_blank");
+  if (!win) {
+    URL.revokeObjectURL(url);
+    alert("Popup blocked — please allow popups for this site, then try again.");
+    return;
+  }
+  // Clean up blob URL after the tab has loaded it
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
 }

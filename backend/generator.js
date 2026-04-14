@@ -86,6 +86,7 @@ function titleCase(text = "") {
 function extractContact(text = "") {
   const lines = extractLines(text);
   const header = lines.slice(0, 6);
+
   const name =
     header.find((line) => {
       if (line.length < 5 || line.length > 40) return false;
@@ -93,11 +94,27 @@ function extractContact(text = "") {
       return /^[A-Za-z .'-]+$/.test(line);
     }) || "Applicant";
 
-  const headerText = header.join(" ");
-  const email = headerText.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0] || "";
-  const phone = headerText.match(/(\+?1[-.\s]?)?(\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})/)?.[0] || "";
-  const location = header.find((line) => /,\s*[A-Z]{2}\b/.test(line) || /remote/i.test(line)) || "";
-  const linkedIn = header.find((line) => /linkedin\.com/i.test(line)) || "";
+  // Flatten all header lines into individual tokens by splitting on bullet separators
+  // This handles both "City, ST • phone • email" on one line and multi-line layouts
+  const tokens = header.flatMap((line) =>
+    line.split(/\s*[•·|]\s*/).map((t) => t.trim()).filter(Boolean)
+  );
+  const tokenText = tokens.join(" ");
+
+  const email = tokenText.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0] || "";
+  const phone = tokenText.match(/(\+?1[-.\s]?)?(\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})/)?.[0] || "";
+
+  // Find location: a token with ", ST" pattern or "Remote"
+  const location = tokens.find((t) => /^[A-Za-z\s]+,\s*[A-Z]{2}$/.test(t) || /^remote$/i.test(t)) || "";
+
+  // Find LinkedIn: a token containing linkedin.com — strip protocol prefix
+  const linkedInRaw = tokens.find((t) => /linkedin\.com/i.test(t)) || "";
+  const linkedIn = linkedInRaw
+    .replace(/^https?:\/\/(?:www\.)?/i, "")
+    .replace(/^linkedin\.com\/in\/https?:\/\/(?:www\.)?linkedin\.com\/in\//i, "linkedin.com/in/");
+
+  // Build a clean, deduped contact string from individual tokens
+  const contactStr = [location, phone, email, linkedIn].filter(Boolean).join(" • ");
 
   return {
     name: titleCase(name),
@@ -105,7 +122,8 @@ function extractContact(text = "") {
     phone,
     location,
     linkedIn,
-    headerLine: [location, phone, email].filter(Boolean).join(" • "),
+    contactStr,
+    headerLine: contactStr,
   };
 }
 
@@ -166,29 +184,40 @@ async function buildPremiumResume({ resumeText = "", targetRole = "" }) {
     };
   }
 
+  // Detect sparse resumes so Claude knows to expand content
+  const wordCount = resumeText.trim().split(/\s+/).length;
+  const sparseNote = wordCount < 300
+    ? "\n\nNOTE: This resume is short and has whitespace. Expand bullets and project descriptions to fill the page — but only by elaborating on what is already written. Describe what the existing work involved, how it was done, or why it mattered. Do NOT add new tools, technologies, or skills that aren't already listed. Do NOT invent responsibilities. Only deepen the explanation of what is already there."
+    : "";
+
   const userMessage = targetRole
-    ? `TARGET ROLE: ${targetRole}\n\nRESUME:\n${resumeText}`
-    : `RESUME:\n${resumeText}`;
+    ? `TARGET ROLE: ${targetRole}\n\nRESUME:\n${resumeText}${sparseNote}`
+    : `RESUME:\n${resumeText}${sparseNote}`;
+
+  // Extract contact from original so we can guarantee it survives Claude's rewrite
+  const contact = extractContact(resumeText);
+  const contactStr = contact.contactStr;
 
   const message = await anthropic.messages.create({
     model: MODEL,
     max_tokens: 2048,
-    system: `You are a professional resume writer. Rewrite the provided resume with stronger action verbs, expanded bullet points with measurable metrics, and enough detail to fill a full page. Keep all facts accurate — only expand and improve what is already there.
+    system: `You are a professional resume writer. Rewrite the provided resume with stronger action verbs and more impactful bullet points. Keep all facts 100% accurate — do NOT invent or add any numbers, percentages, dollar amounts, or metrics that are not explicitly present in the original resume.
 
 FORMATTING RULES — follow exactly, no exceptions:
 - Plain text only. No markdown, no #, ##, **, *, ---, underscores, or any markdown symbols.
-- Line 1: full name in ALL CAPS (e.g. JOHN SMITH)
-- Line 2: contact info as one line separated by " • " (e.g. city, ST • phone • email • linkedin)
-- Blank line, then sections in this order: EDUCATION, EXPERIENCE, PROJECTS (if any), TECHNICAL SKILLS
-- Section headers in ALL CAPS on their own line (EDUCATION, EXPERIENCE, PROJECTS, TECHNICAL SKILLS)
-- Do NOT include a Summary, Objective, or Core Competencies section
+- Do NOT output a name, contact line, email, phone, or location — the header is added separately. Start your response with the first section header.
+- Section order: SUMMARY (only if present in original), EDUCATION, EXPERIENCE, PROJECTS (if present), TECHNICAL SKILLS
+- Section headers in ALL CAPS on their own line
+- If the original has a SUMMARY section, preserve and improve it — do not drop it
+- EDUCATION must come before EXPERIENCE
 - Job/entry header on one line: "Job Title | Company, Location | Month Year – Month Year"
-- Bullet points start with "• " (bullet character). Keep each bullet to 1-2 lines max.
-- One blank line between sections, no blank lines between bullets within a job`,
+- Bullet points start with "• " (bullet character). 1-2 lines max per bullet.
+- One blank line between sections, no blank lines between bullets within a job
+- TECHNICAL SKILLS: always output skills as labeled subcategories tailored to this specific person (e.g. "Languages:", "ML Frameworks:", "Data Pipelines:", "Cloud:", "DevOps:", "Databases:" — whatever fits their actual skill set). If the original already has labeled sections, preserve those exact labels and their contents unchanged. If the original is a flat unlabeled list, invent logical subcategory names that reflect what they actually know — do not use generic buckets like "Frameworks & Tools". Never merge separate categories. Never duplicate a skill across categories.`,
     messages: [{ role: "user", content: userMessage }],
   });
 
-  const premiumResume = stripMarkdown(
+  const bodyText = stripMarkdown(
     message.content
       .filter((block) => block.type === "text")
       .map((block) => block.text)
@@ -196,7 +225,171 @@ FORMATTING RULES — follow exactly, no exceptions:
       .trim()
   );
 
+  // Strip any header Claude generated anyway — scan ALL lines for first section keyword
+  // (Claude sometimes emits blank lines or a contact line before the first section)
+  const bodyLines = bodyText.split("\n");
+  let startLine = 0;
+  for (let idx = 0; idx < bodyLines.length; idx++) {
+    const trimmed = bodyLines[idx].trim();
+    if (/^(EDUCATION|EXPERIENCE|PROFESSIONAL|RELEVANT|WORK HISTORY|PROJECTS?|TECHNICAL|SKILLS?|CERTIFICATIONS?|LEADERSHIP|SUMMARY|OBJECTIVE)/i.test(trimmed) && trimmed.length < 55) {
+      startLine = idx;
+      break;
+    }
+  }
+
+  const nameAllCaps = contact.name.toUpperCase();
+  const rawResume = [
+    nameAllCaps,
+    contactStr,
+    "",
+    ...bodyLines.slice(startLine),
+  ].join("\n");
+
+  const premiumResume = postProcessResume(rawResume, resumeText);
+
   return { analysis, premiumResume };
+}
+
+// ─── Post-processing: auto-fix common output issues ──────────────────────────
+
+const VAGUE_ENDINGS = [
+  /,?\s*expanding market reach\.?$/i,
+  /,?\s*demonstrating (?:strong )?capabilities\.?$/i,
+  /,?\s*showcasing (?:technical )?skills\.?$/i,
+  /,?\s*driving (?:business )?(?:value|growth|results)\.?$/i,
+  /,?\s*leveraging best practices\.?$/i,
+  /,?\s*improving overall performance\.?$/i,
+  /,?\s*(?:to )?support (?:business )?(?:objectives|goals)\.?$/i,
+  /,?\s*(?:to )?meet (?:business|project|team) (?:needs|requirements|demands)\.?$/i,
+  /,?\s*enabling (?:the team|business|stakeholders) to (?:make|achieve|deliver) .{0,40}\.?$/i,
+  /,?\s*(?:further )?enhancing overall (?:user )?experience\.?$/i,
+  /,?\s*(?:while )?(?:contributing to|supporting) (?:the )?(?:team|company|organization)\.?$/i,
+  /,?\s*(?:to )?(?:improve|enhance|optimize) (?:the )?(?:overall )?(?:workflow|process|pipeline)\.?$/i,
+];
+
+// Section header regex — same definition as resumeUpgrader SECTION_RE
+const SECTION_HEADER_RE = /^(EDUCATION|EXPERIENCE|PROFESSIONAL EXPERIENCE|RELEVANT EXPERIENCE|PROJECTS?|TECHNICAL SKILLS?|SKILLS?|SOFT SKILLS?|CERTIFICATIONS?|AWARDS?|LEADERSHIP|ACTIVITIES|VOLUNTEER|WORK HISTORY|SUMMARY|OBJECTIVE)$/i;
+
+// Extract all sections from a plain-text resume as { heading, lines[] }
+function extractSections(text) {
+  const rawLines = text.split("\n").map((l) => l.trim());
+  const sections = [];
+  let current = null;
+  for (const line of rawLines) {
+    if (SECTION_HEADER_RE.test(line) && line.length < 55) {
+      current = { heading: line.toUpperCase(), lines: [] };
+      sections.push(current);
+    } else if (current && line) {
+      current.lines.push(line);
+    }
+  }
+  return sections;
+}
+
+// Sections that Claude should rewrite — don't transplant verbatim from original
+const REWRITE_SECTIONS = new Set(["EXPERIENCE", "PROFESSIONAL EXPERIENCE", "RELEVANT EXPERIENCE", "WORK HISTORY", "PROJECTS", "PROJECT", "SUMMARY", "PROFESSIONAL SUMMARY", "OBJECTIVE"]);
+
+function postProcessResume(resumeText, originalText) {
+  const lines = resumeText.split("\n");
+  const fixed = [];
+
+  // Track if we've passed the header (name + contact line)
+  let headerDone = false;
+  let blankAfterHeader = false;
+  const nameLine = lines[0] || "";
+
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i];
+
+    // Fix double colons anywhere
+    line = line.replace(/::/g, ":");
+
+    // Fix broken LinkedIn/GitHub URLs (strip https://www.)
+    line = line
+      .replace(/https?:\/\/(?:www\.)?(linkedin\.com\/[^\s]+)/gi, "$1")
+      .replace(/https?:\/\/(?:www\.)?(github\.com\/[^\s]+)/gi, "$1");
+
+    // Detect end of header block (first blank line after line 0)
+    if (i === 0) { fixed.push(line); continue; }
+    if (!headerDone && !blankAfterHeader && line === "") {
+      blankAfterHeader = true;
+      fixed.push(line);
+      continue;
+    }
+    if (blankAfterHeader && !headerDone) {
+      headerDone = true;
+    }
+
+    // Remove duplicate contact/name lines that Claude snuck into the body
+    if (headerDone) {
+      if (line.toUpperCase() === nameLine.toUpperCase()) { continue; }
+      if (/\S+@\S+\.\S+/.test(line) && i < 6) { continue; }
+    }
+
+    // Remove vague filler endings from bullet points
+    if (line.startsWith("•")) {
+      for (const pattern of VAGUE_ENDINGS) {
+        line = line.replace(pattern, ".");
+      }
+      line = line.replace(/\.\.$/, ".").replace(/,\.$/, ".");
+    }
+
+    fixed.push(line);
+  }
+
+  // Collapse 3+ consecutive blank lines to max 1
+  const collapsed = [];
+  let blankCount = 0;
+  for (const line of fixed) {
+    if (line === "") {
+      blankCount++;
+      if (blankCount <= 1) collapsed.push(line);
+    } else {
+      blankCount = 0;
+      collapsed.push(line);
+    }
+  }
+
+  let result = collapsed.join("\n");
+
+  // ── Section completeness: transplant sections Claude dropped ──────────────
+  if (originalText) {
+    const originalSections = extractSections(originalText);
+    const outputSections = extractSections(result);
+    const outputHeadings = new Set(outputSections.map((s) => s.heading));
+
+    for (const sec of originalSections) {
+      const heading = sec.heading;
+      // Skip sections Claude should rewrite, skip ones already present
+      if (REWRITE_SECTIONS.has(heading)) continue;
+      if (outputHeadings.has(heading)) continue;
+      // Also skip if output has a close variant (e.g. TECHNICAL SKILLS vs SKILLS)
+      const hasVariant = [...outputHeadings].some(
+        (h) => h.includes(heading.replace(/S$/, "")) || heading.includes(h.replace(/S$/, ""))
+      );
+      if (hasVariant) continue;
+
+      // Append missing section verbatim from original
+      result += `\n\n${heading}\n${sec.lines.join("\n")}`;
+    }
+
+    // Always transplant TECHNICAL SKILLS verbatim from original (Claude mangles it)
+    const origSkills = originalSections.find((s) =>
+      /TECHNICAL\s+SKILLS?|SKILLS?/.test(s.heading)
+    );
+    const outSkills = outputSections.find((s) =>
+      /TECHNICAL\s+SKILLS?|SKILLS?/.test(s.heading)
+    );
+    if (origSkills && outSkills) {
+      // Replace Claude's skills block with the original, preserving the heading Claude used
+      const skillsHeading = outSkills.heading;
+      const origBlock = `${skillsHeading}\n${origSkills.lines.join("\n")}`;
+      const claudeBlock = `${outSkills.heading}\n${outSkills.lines.join("\n")}`;
+      result = result.replace(claudeBlock, origBlock);
+    }
+  }
+
+  return result;
 }
 
 // ─── Cover letter (Claude-powered) ───────────────────────────────────────────
