@@ -1,6 +1,7 @@
 require("dotenv").config();
 
 const path = require("path");
+const fs = require("fs");
 const express = require("express");
 const cors = require("cors");
 const bcrypt = require("bcryptjs");
@@ -35,6 +36,11 @@ const APP_PRICE_IDS = {
 let db;
 
 async function initDb() {
+  const dbDir = path.dirname(DATABASE_PATH);
+  if (dbDir && dbDir !== ".") {
+    fs.mkdirSync(dbDir, { recursive: true });
+  }
+
   db = await open({
     filename: DATABASE_PATH,
     driver: sqlite3.Database,
