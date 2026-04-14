@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import mammoth from "mammoth";
 import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf";
 
@@ -20,6 +20,8 @@ import {
   APP_IDS,
   getCurrentUser,
   hasPurchasedApp,
+  startCheckout,
+  confirmCheckout,
 } from "../services/accountStore";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
@@ -129,7 +131,27 @@ export default function ResumeToolPage() {
 
   const [currentUser, setCurrentUser] = useState(getCurrentUser());
   const isPremium = hasPurchasedApp(APP_IDS.RESUME_SUITE);
-  
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const checkoutStatus = params.get("checkout");
+    const sessionId = params.get("session_id");
+    if (checkoutStatus === "success" && sessionId) {
+      window.history.replaceState({}, "", "/resume-builder");
+      confirmCheckout(sessionId)
+        .then((result) => {
+          if (result?.user) {
+            setCurrentUser(result.user);
+            setPremiumMessage("Premium is now active! You can generate your upgraded resume below.");
+          }
+        })
+        .catch(() => setPremiumMessage("Payment received — please refresh to activate premium."));
+    } else if (checkoutStatus === "cancelled") {
+      window.history.replaceState({}, "", "/resume-builder");
+      setPremiumMessage("Checkout cancelled. No charge was made.");
+    }
+  }, []);
+
   async function handleFileChange(event) {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -173,14 +195,27 @@ export default function ResumeToolPage() {
     }
   }
 
-  function handlePremiumUpgrade() {
+  async function handlePremiumUpgrade() {
     if (!currentUser) {
       setAuthOpen(true);
       return;
     }
-    setPremiumMessage(
-      "Payment integration coming soon. To test premium features now, go back to the main hub and click 'Test unlock resume premium' on your account."
-    );
+    try {
+      setPremiumMessage("Redirecting to checkout...");
+      const returnUrl = window.location.origin + "/resume-builder";
+      const result = await startCheckout(APP_IDS.RESUME_SUITE, returnUrl);
+      if (result.url) {
+        window.location.href = result.url;
+      } else if (result.user) {
+        setCurrentUser(result.user);
+        setPremiumMessage("Premium is now active!");
+      } else {
+        setPremiumMessage("Could not start checkout. Please try again.");
+      }
+    } catch (err) {
+      console.error(err);
+      setPremiumMessage("Could not start checkout. Please try again.");
+    }
   }
 
   function handleGenerateResume() {
