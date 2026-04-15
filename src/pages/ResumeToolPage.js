@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import mammoth from "mammoth";
 import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf";
 
@@ -9,17 +10,19 @@ import PremiumUpsell from "../components/resume/PremiumUpsell";
 import AuthModal from "../components/auth/AuthModal";
 
 import { analyzeResume } from "../utils/resumeAnalyzer";
-import { buildPremiumResume, downloadResumeText, downloadResumeDocx } from "../utils/resumeUpgrader";
+import { downloadResumeText, downloadResumeDocx, downloadResumePdf } from "../utils/resumeUpgrader";
 import {
-  buildCoverLetter,
   buildCoverLetterText,
   downloadCoverLetterText,
+  downloadCoverLetterDocx,
   printCoverLetterPdf,
 } from "../services/coverBuilder";
 import {
   APP_IDS,
   getCurrentUser,
   hasPurchasedApp,
+  generatePremiumResume,
+  generatePremiumCoverLetter,
   startCheckout,
   confirmCheckout,
 } from "../services/accountStore";
@@ -37,8 +40,30 @@ async function extractTextFromPdf(file) {
   for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
     const page = await pdf.getPage(pageNumber);
     const content = await page.getTextContent();
-    const pageText = content.items.map((item) => item.str).join(" ");
-    fullText += `${pageText}\n`;
+
+    // Group items by Y position to reconstruct lines.
+    // Each item's transform is [scaleX, skewX, skewY, scaleY, x, y].
+    // Items on the same line share approximately the same Y value.
+    const lineMap = new Map();
+    for (const item of content.items) {
+      if (!item.str) continue;
+      const y = Math.round(item.transform[5]);
+      if (!lineMap.has(y)) lineMap.set(y, []);
+      lineMap.get(y).push({ x: item.transform[4], text: item.str });
+    }
+
+    // Sort lines top-to-bottom (higher Y = higher on page in PDF coords)
+    const sortedYs = [...lineMap.keys()].sort((a, b) => b - a);
+    const pageLines = sortedYs.map((y) =>
+      lineMap
+        .get(y)
+        .sort((a, b) => a.x - b.x)
+        .map((i) => i.text)
+        .join(" ")
+        .trim()
+    );
+
+    fullText += pageLines.filter(Boolean).join("\n") + "\n";
   }
 
   return fullText;
@@ -108,11 +133,36 @@ function Pill({ children, tone = "default" }) {
 }
 
 export default function ResumeToolPage() {
-  const [role, setRole] = useState("software engineer");
-  const [targetType, setTargetType] = useState("job");
-  const [resumeText, setResumeText] = useState("");
-  const [jobDescription, setJobDescription] = useState("");
-  const [fileName, setFileName] = useState("");
+  // ── Persisted state (survives refresh via localStorage) ──────────────────
+  function load(key, fallback) {
+    try { const v = localStorage.getItem(key); return v !== null ? JSON.parse(v) : fallback; } catch { return fallback; }
+  }
+  function save(key, value) {
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
+  }
+
+  const [role, setRoleRaw] = useState(() => load("rt_role", "software engineer"));
+  const [targetType, setTargetTypeRaw] = useState(() => load("rt_targetType", "job"));
+  const [resumeText, setResumeTextRaw] = useState(() => load("rt_resumeText", ""));
+  const [jobDescription, setJobDescriptionRaw] = useState(() => load("rt_jobDescription", ""));
+  const [fileName, setFileNameRaw] = useState(() => load("rt_fileName", ""));
+  const [generatedResume, setGeneratedResumeRaw] = useState(() => load("rt_generatedResume", ""));
+  const [coverCompany, setCoverCompanyRaw] = useState(() => load("rt_coverCompany", ""));
+  const [coverJobTitle, setCoverJobTitleRaw] = useState(() => load("rt_coverJobTitle", ""));
+  const [activeSection, setActiveSectionRaw] = useState(() => load("rt_activeSection", "grader"));
+
+  // Wrap setters to auto-save on every change
+  const setRole = (v) => { setRoleRaw(v); save("rt_role", v); };
+  const setTargetType = (v) => { setTargetTypeRaw(v); save("rt_targetType", v); };
+  const setResumeText = (v) => { setResumeTextRaw(v); save("rt_resumeText", v); };
+  const setJobDescription = (v) => { setJobDescriptionRaw(v); save("rt_jobDescription", v); };
+  const setFileName = (v) => { setFileNameRaw(v); save("rt_fileName", v); };
+  const setGeneratedResume = (v) => { setGeneratedResumeRaw(v); save("rt_generatedResume", v); };
+  const setCoverCompany = (v) => { setCoverCompanyRaw(v); save("rt_coverCompany", v); };
+  const setCoverJobTitle = (v) => { setCoverJobTitleRaw(v); save("rt_coverJobTitle", v); };
+  const setActiveSection = (v) => { setActiveSectionRaw(v); save("rt_activeSection", v); };
+
+  // ── Transient state (no need to persist) ─────────────────────────────────
   const [analysis, setAnalysis] = useState(null);
   const [isLoadingFile, setIsLoadingFile] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -121,13 +171,13 @@ export default function ResumeToolPage() {
 
   // Premium output state
   const [premiumTab, setPremiumTab] = useState("resume");
-  const [generatedResume, setGeneratedResume] = useState("");
   const [missingItems, setMissingItems] = useState([]);
   const [isGeneratingResume, setIsGeneratingResume] = useState(false);
   const [generatedCoverLetter, setGeneratedCoverLetter] = useState(null);
   const [isGeneratingCoverLetter, setIsGeneratingCoverLetter] = useState(false);
   const [copyNotice, setCopyNotice] = useState("");
   const [authOpen, setAuthOpen] = useState(false);
+  const [suggestions, setSuggestions] = useState([]);
 
   const [currentUser, setCurrentUser] = useState(getCurrentUser());
   const isPremium = hasPurchasedApp(APP_IDS.RESUME_SUITE);
@@ -210,7 +260,7 @@ export default function ResumeToolPage() {
         setCurrentUser(result.user);
         setPremiumMessage("Premium is now active!");
       } else {
-        setPremiumMessage("Could not start checkout. Please try again.");
+        setPremiumMessage(result.message || "Could not start checkout. Please try again.");
       }
     } catch (err) {
       console.error(err);
@@ -218,7 +268,7 @@ export default function ResumeToolPage() {
     }
   }
 
-  function handleGenerateResume() {
+  async function handleGenerateResume() {
     if (!isPremium) {
       handlePremiumUpgrade();
       return;
@@ -230,23 +280,21 @@ export default function ResumeToolPage() {
     setIsGeneratingResume(true);
     setError("");
     try {
-      const { upgradedResume, missingItems: missing } = buildPremiumResume(
-        resumeText,
-        role,
-        analysis || {}
-      );
-      setGeneratedResume(upgradedResume);
-      setMissingItems(missing);
+      const result = await generatePremiumResume({ resumeText, targetRole: role, appId: APP_ID });
+      if (!result.ok) throw new Error(result.message || "Generation failed.");
+      setGeneratedResume(result.premiumResume || "");
+      setSuggestions([]);
+      setMissingItems([]);
       setPremiumTab("resume");
     } catch (err) {
-      setError("Could not generate the upgraded resume.");
+      setError(err.message || "Could not generate the upgraded resume.");
       console.error(err);
     } finally {
       setIsGeneratingResume(false);
     }
   }
 
-  function handleGenerateCoverLetter() {
+  async function handleGenerateCoverLetter() {
     if (!isPremium) {
       handlePremiumUpgrade();
       return;
@@ -262,15 +310,17 @@ export default function ResumeToolPage() {
     setIsGeneratingCoverLetter(true);
     setError("");
     try {
-      const letter = buildCoverLetter({
+      const result = await generatePremiumCoverLetter({
         resumeText,
-        jobDescription,
         targetRole: role,
+        jobDescription,
+        appId: APP_ID,
       });
-      setGeneratedCoverLetter(letter);
+      if (!result.ok) throw new Error(result.message || "Generation failed.");
+      setGeneratedCoverLetter(result.letter);
       setPremiumTab("cover");
     } catch (err) {
-      setError("Could not generate the cover letter.");
+      setError(err.message || "Could not generate the cover letter.");
       console.error(err);
     } finally {
       setIsGeneratingCoverLetter(false);
@@ -289,42 +339,274 @@ export default function ResumeToolPage() {
   }
 
   async function handleDownloadResumeDocx() {
-    if (!generatedResume) return;
+    const text = generatedResume;
+    if (!text) return;
+    const label = "resume";
     try {
-      await downloadResumeDocx(generatedResume, "upgraded_resume.docx");
+      await downloadResumeDocx(text, `upgraded_resume_${label}.docx`);
     } catch (err) {
       setError("DOCX download failed. Try the text download instead.");
       console.error(err);
     }
   }
 
+  const SECTION_CONTENT = {
+    grader: {
+      badge: "free tool",
+      title: "Resume Grader",
+      subtitle: "Upload your resume, choose your target role, and get a detailed score based on keywords, ATS fit, bullet quality, structure, and impact.",
+    },
+    resume: {
+      badge: "premium",
+      title: "Resume Upgrade",
+      subtitle: "Claude rewrites every bullet with stronger action verbs, measurable metrics, and technical depth — tailored to your target role.",
+    },
+    cover: {
+      badge: "premium",
+      title: "Cover Letter Generator",
+      subtitle: "Generate a tailored, one-page cover letter in seconds. Claude pulls the best evidence from your resume and connects it to the job.",
+    },
+  };
+
+  const hero = SECTION_CONTENT[activeSection];
+
   return (
     <div style={styles.page}>
       <div style={styles.hero}>
-        <a href="/" style={{ display: "inline-block", marginBottom: "12px", color: "#94a3b8", fontSize: "13px", textDecoration: "none" }}>← Back to Ackerman Tools</a>
-        <div style={styles.heroBadge}>resume builder + cover letter generator</div>
-        <h1 style={styles.heroTitle}>Resume grader</h1>
-        <p style={styles.heroSubtitle}>
-          Upload your resume, choose your target role, and get a harsher score
-          based on keywords, ATS fit, bullet quality, structure, and impact.
-        </p>
+        <Link to="/" style={styles.backLink}>← Back to home</Link>
+        <div style={styles.heroBadge}>{hero.badge}</div>
+        <h1 style={styles.heroTitle}>{hero.title}</h1>
+        <p style={styles.heroSubtitle}>{hero.subtitle}</p>
       </div>
 
-<div style={styles.topPremiumWrap}>
-  <PremiumUpsell
-    isPremium={isPremium}
-    onUpgrade={handlePremiumUpgrade}
-    title="Unlock the upgraded resume + tailored cover letter"
-    subtitle={
-      isPremium
-        ? "Premium is active on your account. You can now generate upgraded resume and cover letter outputs."
-        : "Start with the free grader, then unlock one stronger reusable resume plus unlimited tailored cover letters for related jobs."
-    }
-    priceText="$10/month"
-    buttonText={isPremium ? "Premium Active" : "Unlock Premium"}
-  />
-</div>
+      {/* ── Three-section nav ── */}
+      <div style={styles.sectionTabRow}>
+        <button
+          type="button"
+          style={activeSection === "grader" ? styles.sectionTabActive : styles.sectionTab}
+          onClick={() => setActiveSection("grader")}
+        >
+          <div style={styles.sectionTabTop}>
+            <span style={styles.sectionTabLabel}>Resume Grader</span>
+            <span style={styles.freeBadge}>Free</span>
+          </div>
+          <span style={styles.sectionTabDesc}>Score your resume with detailed section-by-section feedback</span>
+        </button>
+        <button
+          type="button"
+          style={activeSection === "resume" ? styles.sectionTabActive : styles.sectionTab}
+          onClick={() => setActiveSection("resume")}
+        >
+          <div style={styles.sectionTabTop}>
+            <span style={styles.sectionTabLabel}>Resume Upgrade</span>
+            <span style={isPremium ? styles.premiumBadgeActive : styles.premiumBadgeLocked}>
+              {isPremium ? "Premium" : "🔒 Premium"}
+            </span>
+          </div>
+          <span style={styles.sectionTabDesc}>Rewrite every bullet with stronger language and technical depth</span>
+        </button>
+        <button
+          type="button"
+          style={activeSection === "cover" ? styles.sectionTabActive : styles.sectionTab}
+          onClick={() => setActiveSection("cover")}
+        >
+          <div style={styles.sectionTabTop}>
+            <span style={styles.sectionTabLabel}>Cover Letter</span>
+            <span style={isPremium ? styles.premiumBadgeActive : styles.premiumBadgeLocked}>
+              {isPremium ? "Premium" : "🔒 Premium"}
+            </span>
+          </div>
+          <span style={styles.sectionTabDesc}>Generate unlimited tailored cover letters for any role you apply to</span>
+        </button>
+      </div>
 
+      {copyNotice && <div style={styles.copyToast}>{copyNotice}</div>}
+
+      {/* ── Resume Upgrade section ── */}
+      {activeSection === "resume" && (
+        isPremium ? (
+          <div style={styles.panel}>
+            {error ? <div style={styles.error}>{error}</div> : null}
+            {!resumeText.trim() && (
+              <div style={styles.notice}>
+                Go to Resume Grader first to upload or paste your resume, then come back here to generate the upgrade.
+              </div>
+            )}
+            <div style={styles.controlsGrid}>
+              <div style={styles.controlCard}>
+                <div style={styles.cardLabel}>Role track</div>
+                <select value={role} onChange={(e) => setRole(e.target.value)} style={styles.select}>
+                  <option value="software engineer">Software Engineer</option>
+                  <option value="data scientist">Data Scientist</option>
+                  <option value="backend developer">Backend Developer</option>
+                  <option value="frontend developer">Frontend Developer</option>
+                  <option value="full stack developer">Full Stack Developer</option>
+                </select>
+              </div>
+              <div style={styles.controlCard}>
+                <div style={styles.cardLabel}>Target type</div>
+                <select value={targetType} onChange={(e) => setTargetType(e.target.value)} style={styles.select}>
+                  <option value="job">Job</option>
+                  <option value="internship">Internship</option>
+                </select>
+              </div>
+            </div>
+            <div style={styles.actionRow}>
+              <button
+                type="button"
+                style={{
+                  ...styles.primaryButton,
+                  opacity: isGeneratingResume ? 0.7 : 1,
+                  cursor: isGeneratingResume ? "not-allowed" : "pointer",
+                }}
+                onClick={handleGenerateResume}
+                disabled={isGeneratingResume}
+              >
+                {isGeneratingResume ? "Generating..." : "Generate upgraded resume"}
+              </button>
+            </div>
+            {generatedResume && (
+              <div style={styles.outputCard}>
+                <div style={styles.outputCardHeader}>
+                  <div>
+                    <div style={styles.eyebrowSmall}>upgraded resume</div>
+                    <h3 style={styles.sectionTitle}>Your upgraded resume</h3>
+                    <p style={styles.outputMeta}>Bullets rewritten with stronger language, more technical detail, and role-specific keywords.</p>
+                  </div>
+                </div>
+                <div style={styles.outputButtons}>
+                  <button type="button" style={styles.smallActionButton} onClick={() => handleCopy(generatedResume)}>Copy</button>
+                  <button type="button" style={styles.smallActionButton} onClick={() => downloadResumeText(generatedResume, "upgraded_resume.txt")}>Download TXT</button>
+                  <button type="button" style={styles.smallActionButton} onClick={handleDownloadResumeDocx}>Download DOCX</button>
+                  <button type="button" style={styles.smallActionButton} onClick={() => downloadResumePdf(generatedResume, "upgraded_resume.pdf")}>Download PDF</button>
+                </div>
+                {missingItems.length > 0 && (
+                  <div style={styles.missingItemsBox}>
+                    <div style={styles.missingTitle}>Items to add manually before using this resume</div>
+                    {missingItems.map((item, i) => (
+                      <div key={i} style={styles.missingItem}>
+                        <span style={styles.missingField}>{item.field}</span>
+                        <span style={styles.missingReason}>{item.reason}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <pre style={styles.outputPreview}>{generatedResume}</pre>
+                {suggestions.length > 0 && (
+                  <div style={styles.suggestionsBox}>
+                    <div style={styles.suggestionsHeading}>What to fill in manually</div>
+                    <p style={styles.suggestionsDesc}>We couldn't infer these from your resume — they'd make your bullets significantly stronger:</p>
+                    {suggestions.map((s, i) => (
+                      <div key={i} style={styles.suggestionRow}>
+                        <span style={styles.suggestionField}>{s.field}</span>
+                        <span style={styles.suggestionTip}>{s.tip}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div style={styles.lockedPanelWrap}>
+            <div style={styles.lockedCard}>
+              <div style={styles.lockIconLarge}>🔒</div>
+              <h3 style={styles.lockedTitle}>Resume Upgrade</h3>
+              <p style={styles.lockedDesc}>
+                Rewrites every bullet with stronger action language, adds technical depth, and generates role-specific keywords. Download as PDF, DOCX, or TXT — ready to send.
+              </p>
+              <button type="button" style={styles.unlockButton} onClick={handlePremiumUpgrade}>
+                Unlock Premium — $9 one-time
+              </button>
+            </div>
+          </div>
+        )
+      )}
+
+      {/* ── Cover Letter section ── */}
+      {activeSection === "cover" && (
+        isPremium ? (
+          <div style={styles.panel}>
+            {error ? <div style={styles.error}>{error}</div> : null}
+            {!resumeText.trim() && (
+              <div style={styles.notice}>
+                Go to Resume Grader first to upload or paste your resume, then come back here to generate a cover letter.
+              </div>
+            )}
+            <div style={styles.eyebrowSmall}>tailored cover letter</div>
+            <h3 style={{ ...styles.sectionTitle, marginBottom: "16px" }}>Cover letter generator</h3>
+            <div style={styles.coverInputRow}>
+              <input
+                style={styles.coverInput}
+                value={coverCompany}
+                onChange={(e) => setCoverCompany(e.target.value)}
+                placeholder="Company name"
+              />
+              <input
+                style={styles.coverInput}
+                value={coverJobTitle}
+                onChange={(e) => setCoverJobTitle(e.target.value)}
+                placeholder="Job title"
+              />
+            </div>
+            <textarea
+              style={{ ...styles.textarea, minHeight: "160px", marginBottom: "12px" }}
+              value={jobDescription}
+              onChange={(e) => setJobDescription(e.target.value)}
+              placeholder="Paste the job description here..."
+            />
+            <div style={styles.actionRow}>
+              <button
+                type="button"
+                style={{
+                  ...styles.primaryButton,
+                  opacity: isGeneratingCoverLetter ? 0.7 : 1,
+                  cursor: isGeneratingCoverLetter ? "not-allowed" : "pointer",
+                }}
+                onClick={handleGenerateCoverLetter}
+                disabled={isGeneratingCoverLetter}
+              >
+                {isGeneratingCoverLetter ? "Generating..." : "Generate cover letter"}
+              </button>
+            </div>
+            {generatedCoverLetter && (
+              <div style={styles.outputCard}>
+                <div style={styles.outputCardHeader}>
+                  <div>
+                    <div style={styles.eyebrowSmall}>tailored cover letter</div>
+                    <h3 style={styles.sectionTitle}>Your cover letter</h3>
+                    <p style={styles.outputMeta}>Paste a new job description above and regenerate for any role — unlimited.</p>
+                  </div>
+                </div>
+                <div style={styles.outputButtons}>
+                  <button type="button" style={styles.smallActionButton} onClick={() => handleCopy(buildCoverLetterText(generatedCoverLetter))}>Copy</button>
+                  <button type="button" style={styles.smallActionButton} onClick={() => downloadCoverLetterDocx(generatedCoverLetter, "cover_letter.docx")}>Download DOCX</button>
+                  <button type="button" style={styles.smallActionButton} onClick={() => downloadCoverLetterText(generatedCoverLetter, "cover_letter.txt")}>Download TXT</button>
+                  <button type="button" style={styles.smallActionButton} onClick={() => printCoverLetterPdf(generatedCoverLetter)}>Download PDF</button>
+                </div>
+                <pre style={styles.outputPreview}>{buildCoverLetterText(generatedCoverLetter)}</pre>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div style={styles.lockedPanelWrap}>
+            <div style={styles.lockedCard}>
+              <div style={styles.lockIconLarge}>🔒</div>
+              <h3 style={styles.lockedTitle}>Cover Letter Generator</h3>
+              <p style={styles.lockedDesc}>
+                Generates a tailored 3-paragraph cover letter for any job you apply to. Paste a new description and regenerate as many times as you need — unlimited.
+              </p>
+              <button type="button" style={styles.unlockButton} onClick={handlePremiumUpgrade}>
+                Unlock Premium — $9 one-time
+              </button>
+            </div>
+          </div>
+        )
+      )}
+
+      {/* ── Resume Grader section (free) ── */}
+      {activeSection === "grader" && (
+      <>
       <div style={styles.panel}>
         <div style={styles.controlsGrid}>
           <div style={styles.controlCard}>
@@ -385,41 +667,6 @@ export default function ResumeToolPage() {
               placeholder="Paste your resume text here if you do not want to upload a file."
               style={styles.textarea}
             />
-          </div>
-
-          <div style={styles.textBlock}>
-            <div style={styles.cardLabel}>
-              Job description
-              {!isPremium && (
-                <span style={styles.premiumTag}>Premium</span>
-              )}
-            </div>
-            {isPremium ? (
-              <textarea
-                value={jobDescription}
-                onChange={(event) => setJobDescription(event.target.value)}
-                placeholder="Paste the full job description here. The cover letter generator will use it to tailor your letter to this specific role and company."
-                style={styles.textarea}
-              />
-            ) : (
-              <div style={styles.lockedBox}>
-                <div style={{ fontWeight: 800, marginBottom: 8, color: "#fde68a" }}>
-                  Unlock to access cover letter generation
-                </div>
-                Paste a job description here after unlocking premium ($10/month).
-                The cover letter generator will write a tailored 3-paragraph letter
-                using your resume and this job description.
-                <div style={{ marginTop: 14 }}>
-                  <button
-                    type="button"
-                    onClick={handlePremiumUpgrade}
-                    style={styles.unlockButton}
-                  >
-                    Unlock Premium — $10/mo
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
         </div>
 
@@ -733,156 +980,9 @@ export default function ResumeToolPage() {
             </div>
           </section>
 
-          <div style={styles.premiumInfoGrid}>
-            <section style={styles.dashboardCard}>
-              <div style={styles.eyebrowSmall}>premium value</div>
-              <h3 style={styles.sectionTitle}>What premium actually gives the user</h3>
-              <ul style={styles.bulletList}>
-                <li>One stronger resume they can keep reusing</li>
-                <li>Unlimited fresh cover letters from related job descriptions</li>
-                <li>Cleaner premium outputs and export controls</li>
-              </ul>
-            </section>
-
-            <section style={styles.dashboardCard}>
-              <div style={styles.eyebrowSmall}>cover letter strategy</div>
-              <h3 style={styles.sectionTitle}>
-                How the builder writes the letter before the user presses generate
-              </h3>
-              <ol style={styles.numberList}>
-                <li>
-                  Paragraph one explains what the job is for and why the role matters.
-                </li>
-                <li>
-                  Paragraph two explains what the candidate actually does using
-                  evidence from the resume.
-                </li>
-                <li>
-                  Paragraph three maps those strengths to the company’s needs and
-                  states the value the candidate would bring.
-                </li>
-              </ol>
-            </section>
-          </div>
-
-          {/* Premium generate buttons */}
-          <div style={styles.premiumGenerateRow}>
-            <div style={styles.premiumLockedRow}>
-              <h3 style={styles.generateTitle}>
-                Premium outputs
-              </h3>
-              <span style={isPremium ? styles.lockBadgeActive : styles.lockBadge}>
-                {isPremium ? "Premium active" : "Premium locked"}
-              </span>
-            </div>
-            <p style={styles.generateText}>
-              Generate an upgraded version of your resume and a tailored cover letter.
-              Both are unlimited with the $10/month subscription.
-            </p>
-            <div style={styles.generateButtonRow}>
-              <button
-                type="button"
-                style={{
-                  ...styles.primaryWideButton,
-                  opacity: isGeneratingResume ? 0.7 : 1,
-                  cursor: isGeneratingResume ? "not-allowed" : "pointer",
-                }}
-                onClick={handleGenerateResume}
-                disabled={isGeneratingResume}
-              >
-                {isGeneratingResume ? "Generating resume..." : "Generate upgraded resume"}
-              </button>
-              <button
-                type="button"
-                style={{
-                  ...styles.secondaryWideButton,
-                  opacity: isGeneratingCoverLetter ? 0.7 : 1,
-                  cursor: isGeneratingCoverLetter ? "not-allowed" : "pointer",
-                }}
-                onClick={handleGenerateCoverLetter}
-                disabled={isGeneratingCoverLetter}
-              >
-                {isGeneratingCoverLetter ? "Generating cover letter..." : "Generate tailored cover letter"}
-              </button>
-            </div>
-          </div>
-
-          {/* Tab switcher and output area */}
-          {(generatedResume || generatedCoverLetter) && (
-            <div style={styles.premiumOutputSection}>
-              <div style={styles.tabRow}>
-                <button
-                  type="button"
-                  style={premiumTab === "resume" ? styles.tabActive : styles.tab}
-                  onClick={() => setPremiumTab("resume")}
-                >
-                  Upgraded Resume
-                </button>
-                <button
-                  type="button"
-                  style={premiumTab === "cover" ? styles.tabActive : styles.tab}
-                  onClick={() => setPremiumTab("cover")}
-                >
-                  Cover Letter
-                </button>
-              </div>
-
-              {/* Resume output */}
-              {premiumTab === "resume" && (
-                <div style={styles.outputCard}>
-                  <div style={styles.outputCardHeader}>
-                    <div>
-                      <div style={styles.eyebrowSmall}>upgraded resume</div>
-                      <h3 style={styles.sectionTitle}>ATS-optimized version</h3>
-                      <p style={styles.outputMeta}>
-                        Improved bullet language, stronger action verbs, and ATS vocabulary.
-                        Your original structure and style are preserved.
-                      </p>
-                    </div>
-                    <div style={styles.outputButtons}>
-                      <button
-                        type="button"
-                        style={styles.smallActionButton}
-                        onClick={() => handleCopy(generatedResume)}
-                      >
-                        Copy
-                      </button>
-                      <button
-                        type="button"
-                        style={styles.smallActionButton}
-                        onClick={() => downloadResumeText(generatedResume, "upgraded_resume.txt")}
-                      >
-                        Download TXT
-                      </button>
-                      <button
-                        type="button"
-                        style={styles.smallActionButton}
-                        onClick={handleDownloadResumeDocx}
-                      >
-                        Download DOCX
-                      </button>
-                    </div>
-                  </div>
-
-                  {missingItems.length > 0 && (
-                    <div style={styles.missingItemsBox}>
-                      <div style={styles.missingTitle}>
-                        Items to add manually before using this resume
-                      </div>
-                      {missingItems.map((item, i) => (
-                        <div key={i} style={styles.missingItem}>
-                          <span style={styles.missingField}>{item.field}</span>
-                          <span style={styles.missingReason}>{item.reason}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  <pre style={styles.outputPreview}>{generatedResume}</pre>
-                </div>
-              )}
-
-              {/* Cover letter output */}
+          {false && (
+            <div>
+              {/* dead block — removed */}
               {premiumTab === "cover" && generatedCoverLetter && (
                 <div style={styles.outputCard}>
                   <div style={styles.outputCardHeader}>
@@ -935,24 +1035,10 @@ export default function ResumeToolPage() {
             </div>
           )}
 
-          {copyNotice && (
-            <div style={styles.copyToast}>{copyNotice}</div>
-          )}
-
-          <PremiumUpsell
-            isPremium={isPremium}
-            onUpgrade={handlePremiumUpgrade}
-            title="Get the upgraded resume + tailored cover letter"
-            subtitle={
-              isPremium
-                ? "Premium is active. Generate your upgraded resume and unlimited cover letters above."
-                : "A $10/month subscription unlocks an upgraded version of your resume plus unlimited tailored cover letters for any job you apply to."
-            }
-            priceText="$10/month"
-            buttonText="Unlock Premium"
-          />
         </div>
       ) : null}
+      </>
+      )}
 
       <AuthModal
         isOpen={authOpen}
@@ -980,6 +1066,14 @@ const styles = {
     maxWidth: "1100px",
     margin: "0 auto 24px auto",
   },
+  backLink: {
+    display: "inline-block",
+    marginBottom: "16px",
+    color: "#a5b4fc",
+    fontSize: "14px",
+    textDecoration: "none",
+    opacity: 0.8,
+  },
   heroBadge: {
     display: "inline-flex",
     alignItems: "center",
@@ -996,9 +1090,132 @@ const styles = {
     marginBottom: "14px",
   },
   topPremiumWrap: {
-  maxWidth: "1100px",
-  margin: "0 auto 24px auto",
-},
+    maxWidth: "1100px",
+    margin: "0 auto 24px auto",
+  },
+  sectionTabRow: {
+    maxWidth: "1100px",
+    margin: "0 auto 28px auto",
+    display: "grid",
+    gridTemplateColumns: "repeat(3, 1fr)",
+    gap: "12px",
+  },
+  sectionTab: {
+    background: "rgba(255,255,255,0.04)",
+    border: "1px solid rgba(255,255,255,0.10)",
+    borderRadius: "16px",
+    padding: "18px 20px",
+    textAlign: "left",
+    cursor: "pointer",
+    color: "#94a3b8",
+    transition: "background 0.15s, border-color 0.15s",
+  },
+  sectionTabActive: {
+    background: "rgba(99,102,241,0.14)",
+    border: "1px solid rgba(99,102,241,0.45)",
+    borderRadius: "16px",
+    padding: "18px 20px",
+    textAlign: "left",
+    cursor: "pointer",
+    color: "#f8fafc",
+    transition: "background 0.15s, border-color 0.15s",
+  },
+  sectionTabTop: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: "6px",
+  },
+  sectionTabLabel: {
+    fontSize: "15px",
+    fontWeight: 800,
+    letterSpacing: "-0.01em",
+  },
+  sectionTabDesc: {
+    fontSize: "12px",
+    lineHeight: 1.5,
+    display: "block",
+    opacity: 0.8,
+  },
+  freeBadge: {
+    fontSize: "11px",
+    fontWeight: 800,
+    padding: "3px 9px",
+    borderRadius: "999px",
+    background: "rgba(34,197,94,0.15)",
+    color: "#86efac",
+    border: "1px solid rgba(34,197,94,0.30)",
+    letterSpacing: "0.04em",
+    textTransform: "uppercase",
+    whiteSpace: "nowrap",
+  },
+  premiumBadgeActive: {
+    fontSize: "11px",
+    fontWeight: 800,
+    padding: "3px 9px",
+    borderRadius: "999px",
+    background: "rgba(251,191,36,0.15)",
+    color: "#fde68a",
+    border: "1px solid rgba(251,191,36,0.30)",
+    letterSpacing: "0.04em",
+    textTransform: "uppercase",
+    whiteSpace: "nowrap",
+  },
+  premiumBadgeLocked: {
+    fontSize: "11px",
+    fontWeight: 800,
+    padding: "3px 9px",
+    borderRadius: "999px",
+    background: "rgba(100,116,139,0.15)",
+    color: "#94a3b8",
+    border: "1px solid rgba(100,116,139,0.25)",
+    letterSpacing: "0.04em",
+    textTransform: "uppercase",
+    whiteSpace: "nowrap",
+  },
+  lockedPanelWrap: {
+    maxWidth: "1100px",
+    margin: "0 auto",
+    padding: "0 20px",
+  },
+  lockedCard: {
+    background: "rgba(255,255,255,0.03)",
+    border: "1px solid rgba(255,255,255,0.08)",
+    borderRadius: "20px",
+    padding: "56px 40px",
+    textAlign: "center",
+    maxWidth: "560px",
+    margin: "0 auto",
+  },
+  lockIconLarge: {
+    fontSize: "40px",
+    marginBottom: "16px",
+    display: "block",
+  },
+  lockedTitle: {
+    margin: "0 0 12px 0",
+    fontSize: "22px",
+    fontWeight: 800,
+    color: "#f8fafc",
+    letterSpacing: "-0.02em",
+  },
+  lockedDesc: {
+    color: "#94a3b8",
+    fontSize: "14px",
+    lineHeight: 1.7,
+    margin: "0 0 28px 0",
+  },
+  unlockButton: {
+    background: "linear-gradient(135deg, #7c3aed 0%, #2563eb 100%)",
+    border: "none",
+    borderRadius: "14px",
+    padding: "14px 28px",
+    fontSize: "15px",
+    fontWeight: 800,
+    color: "#fff",
+    cursor: "pointer",
+    boxShadow: "0 8px 24px rgba(124,58,237,0.35)",
+  },
   heroTitle: {
     margin: 0,
     fontSize: "48px",
@@ -1099,6 +1316,23 @@ const styles = {
     lineHeight: 1.6,
     outline: "none",
     boxSizing: "border-box",
+  },
+  coverInputRow: {
+    display: "flex",
+    gap: "10px",
+    marginBottom: "8px",
+  },
+  coverInput: {
+    flex: 1,
+    background: "rgba(255,255,255,0.06)",
+    border: "1px solid rgba(255,255,255,0.12)",
+    borderRadius: "10px",
+    color: "#f8fafc",
+    fontSize: "14px",
+    padding: "10px 14px",
+    outline: "none",
+    boxSizing: "border-box",
+    minWidth: 0,
   },
   lockedBox: {
     minHeight: "240px",
@@ -1296,6 +1530,45 @@ const styles = {
       "linear-gradient(180deg, rgba(15,23,42,0.92) 0%, rgba(10,15,27,0.98) 100%)",
     border: "1px solid rgba(148,163,184,0.14)",
     marginBottom: "26px",
+  },
+  suggestionsBox: {
+    marginTop: "20px",
+    background: "rgba(234,179,8,0.06)",
+    border: "1px solid rgba(234,179,8,0.22)",
+    borderRadius: "10px",
+    padding: "18px 20px",
+  },
+  suggestionsHeading: {
+    fontSize: "13px",
+    fontWeight: 800,
+    color: "#fde68a",
+    letterSpacing: "0.05em",
+    textTransform: "uppercase",
+    marginBottom: "6px",
+  },
+  suggestionsDesc: {
+    fontSize: "13px",
+    color: "#94a3b8",
+    margin: "0 0 14px 0",
+    lineHeight: 1.55,
+  },
+  suggestionRow: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "2px",
+    marginBottom: "10px",
+    paddingBottom: "10px",
+    borderBottom: "1px solid rgba(234,179,8,0.1)",
+  },
+  suggestionField: {
+    fontSize: "13px",
+    fontWeight: 700,
+    color: "#fcd34d",
+  },
+  suggestionTip: {
+    fontSize: "12px",
+    color: "#94a3b8",
+    lineHeight: 1.5,
   },
   premiumInfoGrid: {
     display: "grid",
@@ -1553,6 +1826,50 @@ const styles = {
     cursor: "pointer",
     background: "rgba(99,102,241,0.14)",
     color: "#c7d2fe",
+  },
+  variantTabRow: {
+    display: "flex",
+    gap: "10px",
+    flexWrap: "wrap",
+    marginBottom: "16px",
+  },
+  variantTab: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: "3px",
+    border: "1px solid rgba(148,163,184,0.18)",
+    borderRadius: "12px",
+    padding: "10px 16px",
+    cursor: "pointer",
+    background: "transparent",
+    flex: 1,
+    minWidth: "140px",
+    textAlign: "left",
+  },
+  variantTabActive: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: "3px",
+    border: "1px solid rgba(99,102,241,0.5)",
+    borderRadius: "12px",
+    padding: "10px 16px",
+    cursor: "pointer",
+    background: "rgba(99,102,241,0.14)",
+    flex: 1,
+    minWidth: "140px",
+    textAlign: "left",
+  },
+  variantTabLabel: {
+    fontSize: "13px",
+    fontWeight: 700,
+    color: "#e2e8f0",
+  },
+  variantTabDesc: {
+    fontSize: "11px",
+    color: "#64748b",
+    lineHeight: 1.4,
   },
   outputCard: {
     borderRadius: "22px",
