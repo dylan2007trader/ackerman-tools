@@ -339,7 +339,7 @@ async function request(path, { method = "GET", body, auth = true } = {}) {
   }
 
   const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), 8000);
+  const timeoutId = window.setTimeout(() => controller.abort(), 60000); // 60s — Claude API can take 15-20s
 
   let response;
 
