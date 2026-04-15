@@ -1057,8 +1057,7 @@ export default function ResumeToolPage() {
 const styles = {
   page: {
     minHeight: "100vh",
-    background:
-      "radial-gradient(circle at top, rgba(30,41,59,0.65) 0%, rgba(2,6,23,1) 45%, rgba(2,6,23,1) 100%)",
+    background: "#0a0f1c",
     padding: "32px 20px 60px 20px",
     color: "#f8fafc",
   },
