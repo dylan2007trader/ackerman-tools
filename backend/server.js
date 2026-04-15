@@ -68,6 +68,13 @@ async function initDb() {
       FOREIGN KEY(user_id) REFERENCES users(id)
     );
   `);
+
+  // Add subscription_id column if it doesn't exist (idempotent migration)
+  try {
+    await db.exec(`ALTER TABLE purchases ADD COLUMN subscription_id TEXT`);
+  } catch (err) {
+    // Column already exists, ignore
+  }
 }
 
 function normalizeUsername(value = "") {
@@ -120,17 +127,19 @@ async function grantPurchase({
   appId,
   checkoutSessionId = "",
   paymentIntentId = "",
+  subscriptionId = "",
   provider = "stripe",
 }) {
   await db.run(
     `
-      INSERT INTO purchases (user_id, app_id, provider, checkout_session_id, payment_intent_id, status, updated_at)
-      VALUES (?, ?, ?, ?, ?, 'paid', CURRENT_TIMESTAMP)
+      INSERT INTO purchases (user_id, app_id, provider, checkout_session_id, payment_intent_id, subscription_id, status, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, 'paid', CURRENT_TIMESTAMP)
       ON CONFLICT(user_id, app_id)
       DO UPDATE SET
         provider = excluded.provider,
         checkout_session_id = CASE WHEN excluded.checkout_session_id != '' THEN excluded.checkout_session_id ELSE purchases.checkout_session_id END,
         payment_intent_id = CASE WHEN excluded.payment_intent_id != '' THEN excluded.payment_intent_id ELSE purchases.payment_intent_id END,
+        subscription_id = CASE WHEN excluded.subscription_id != '' THEN excluded.subscription_id ELSE purchases.subscription_id END,
         status = 'paid',
         updated_at = CURRENT_TIMESTAMP
     `,
@@ -138,7 +147,16 @@ async function grantPurchase({
     appId,
     provider,
     checkoutSessionId,
-    paymentIntentId
+    paymentIntentId,
+    subscriptionId
+  );
+}
+
+async function revokePurchaseBySubscription(subscriptionId) {
+  if (!subscriptionId) return;
+  await db.run(
+    `UPDATE purchases SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE subscription_id = ?`,
+    subscriptionId
   );
 }
 
@@ -206,9 +224,13 @@ app.post(
             appId,
             checkoutSessionId: session.id || "",
             paymentIntentId: String(session.payment_intent || ""),
+            subscriptionId: String(session.subscription || ""),
             provider: "stripe",
           });
         }
+      } else if (event.type === "customer.subscription.deleted") {
+        const subscription = event.data.object;
+        await revokePurchaseBySubscription(subscription.id);
       }
 
       return res.json({ received: true });
@@ -409,7 +431,7 @@ app.post("/api/checkout/create-session", requireAuth, async (req, res) => {
     }
 
     const session = await stripe.checkout.sessions.create({
-      mode: "payment",
+      mode: "subscription",
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: `${returnUrl}?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${returnUrl}?checkout=cancelled`,
@@ -473,6 +495,7 @@ app.post("/api/checkout/confirm", requireAuth, async (req, res) => {
       appId,
       checkoutSessionId: session.id || "",
       paymentIntentId: String(session.payment_intent || ""),
+      subscriptionId: String(session.subscription || ""),
       provider: "stripe",
     });
 
