@@ -445,31 +445,61 @@ export async function refreshCurrentUser() {
   }
 }
 
-export async function createAccount({ username, password }) {
+export async function createAccount({ email, password }) {
   try {
     const result = await request("/api/auth/signup", {
       method: "POST",
-      body: { username, password },
+      body: { email, password },
       auth: false,
     });
 
     return result;
   } catch (error) {
-    return localCreateAccount({ username, password });
+    return localCreateAccount({ username: email, password });
   }
 }
 
-export async function loginUser({ username, password }) {
+export async function loginUser({ email, password }) {
   try {
     const result = await request("/api/auth/login", {
       method: "POST",
-      body: { username, password },
+      body: { email, password },
       auth: false,
     });
 
     return result;
   } catch (error) {
-    return localLoginUser({ username, password });
+    return localLoginUser({ username: email, password });
+  }
+}
+
+export async function forgotPassword({ email }) {
+  try {
+    return await request("/api/auth/forgot-password", {
+      method: "POST",
+      body: { email },
+      auth: false,
+    });
+  } catch (error) {
+    return {
+      ok: false,
+      message: "Could not reach the server. Try again in a moment.",
+    };
+  }
+}
+
+export async function resetPassword({ token, password }) {
+  try {
+    return await request("/api/auth/reset-password", {
+      method: "POST",
+      body: { token, password },
+      auth: false,
+    });
+  } catch (error) {
+    return {
+      ok: false,
+      message: "Could not reach the server. Try again in a moment.",
+    };
   }
 }
 
