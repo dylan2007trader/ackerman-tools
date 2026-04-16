@@ -1,5 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { createAccount, loginUser } from "../../services/accountStore";
+import {
+  createAccount,
+  loginUser,
+  forgotPassword,
+} from "../../services/accountStore";
 
 export default function AuthModal({
   isOpen,
@@ -8,60 +12,69 @@ export default function AuthModal({
   defaultMode = "login",
 }) {
   const [mode, setMode] = useState(defaultMode);
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+
   useEffect(() => {
-  setMode(defaultMode);
-}, [defaultMode, isOpen]);
+    setMode(defaultMode);
+  }, [defaultMode, isOpen]);
 
   if (!isOpen) return null;
 
   async function handleSubmit(event) {
-  event.preventDefault();
-  setIsLoading(true);
-  setMessage("");
-
-  try {
-    const action = mode === "signup" ? createAccount : loginUser;
-    const result = await action({ username, password });
-
-    console.log("AUTH RESULT:", result);
-
-    if (!result?.ok) {
-      setMessage(result?.message || "Something went wrong.");
-      setIsLoading(false);
-      return;
-    }
-
-    setMessage(result.message || "Success.");
-    setPassword("");
+    event.preventDefault();
+    setIsLoading(true);
+    setMessage("");
 
     try {
-      if (onAuthSuccess) {
-        onAuthSuccess(result.user || null);
+      if (mode === "forgot") {
+        const result = await forgotPassword({ email });
+        setMessage(
+          result?.message ||
+            "If an account exists for that email, a reset link is on its way."
+        );
+        setIsLoading(false);
+        return;
       }
-    } catch (callbackError) {
-      console.error("onAuthSuccess error:", callbackError);
-      setMessage(
-        callbackError?.message || "Signed in, but UI refresh failed."
-      );
-      setIsLoading(false);
-      return;
-    }
 
-    setTimeout(() => {
-      onClose?.();
-      setMessage("");
-    }, 250);
-  } catch (error) {
-    console.error("AUTH MODAL ERROR:", error);
-    setMessage(error?.message || "Could not complete that request.");
-  } finally {
-    setIsLoading(false);
+      const action = mode === "signup" ? createAccount : loginUser;
+      const result = await action({ email, password });
+
+      if (!result?.ok) {
+        setMessage(result?.message || "Something went wrong.");
+        setIsLoading(false);
+        return;
+      }
+
+      setMessage(result.message || "Success.");
+      setPassword("");
+
+      try {
+        if (onAuthSuccess) {
+          onAuthSuccess(result.user || null);
+        }
+      } catch (callbackError) {
+        console.error("onAuthSuccess error:", callbackError);
+        setMessage(
+          callbackError?.message || "Signed in, but UI refresh failed."
+        );
+        setIsLoading(false);
+        return;
+      }
+
+      setTimeout(() => {
+        onClose?.();
+        setMessage("");
+      }, 250);
+    } catch (error) {
+      console.error("AUTH MODAL ERROR:", error);
+      setMessage(error?.message || "Could not complete that request.");
+    } finally {
+      setIsLoading(false);
+    }
   }
-}
 
   function handleBackdropClick(event) {
     if (event.target === event.currentTarget) {
@@ -69,18 +82,38 @@ export default function AuthModal({
     }
   }
 
+  const isForgot = mode === "forgot";
+  const isSignup = mode === "signup";
+
+  const headingText = isForgot
+    ? "Reset your password"
+    : isSignup
+    ? "Create your account"
+    : "Sign in";
+
+  const submitLabel = isLoading
+    ? isForgot
+      ? "Sending..."
+      : isSignup
+      ? "Creating account..."
+      : "Signing in..."
+    : isForgot
+    ? "Send reset link"
+    : isSignup
+    ? "Create account"
+    : "Sign in";
+
   return (
     <div style={styles.overlay} onClick={handleBackdropClick}>
       <div style={styles.modal}>
         <div style={styles.headerRow}>
           <div>
             <div style={styles.eyebrow}>ACKERMAN TOOLS ACCOUNT</div>
-            <h2 style={styles.title}>
-              {mode === "signup" ? "Create your account" : "Sign in"}
-            </h2>
+            <h2 style={styles.title}>{headingText}</h2>
             <p style={styles.subtitle}>
-              Use one account across Ackerman Tools so premium access follows
-              you across future apps.
+              {isForgot
+                ? "Enter the email tied to your account and we'll send a link to set a new password."
+                : "Use one account across Ackerman Tools so premium access follows you across future apps."}
             </p>
           </div>
 
@@ -89,62 +122,68 @@ export default function AuthModal({
           </button>
         </div>
 
-        <div style={styles.tabRow}>
-          <button
-            type="button"
-            onClick={() => {
-              setMode("login");
-              setMessage("");
-            }}
-            style={{
-              ...styles.tabButton,
-              ...(mode === "login" ? styles.tabButtonActive : {}),
-            }}
-          >
-            Sign in
-          </button>
+        {!isForgot && (
+          <div style={styles.tabRow}>
+            <button
+              type="button"
+              onClick={() => {
+                setMode("login");
+                setMessage("");
+              }}
+              style={{
+                ...styles.tabButton,
+                ...(mode === "login" ? styles.tabButtonActive : {}),
+              }}
+            >
+              Sign in
+            </button>
 
-          <button
-            type="button"
-            onClick={() => {
-              setMode("signup");
-              setMessage("");
-            }}
-            style={{
-              ...styles.tabButton,
-              ...(mode === "signup" ? styles.tabButtonActive : {}),
-            }}
-          >
-            Create account
-          </button>
-        </div>
+            <button
+              type="button"
+              onClick={() => {
+                setMode("signup");
+                setMessage("");
+              }}
+              style={{
+                ...styles.tabButton,
+                ...(mode === "signup" ? styles.tabButtonActive : {}),
+              }}
+            >
+              Create account
+            </button>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} style={styles.form}>
           <label style={styles.label}>
-            Username
+            Email
             <input
-              type="text"
-              value={username}
-              onChange={(event) => setUsername(event.target.value)}
-              placeholder="Enter username"
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="you@example.com"
               style={styles.input}
-              autoComplete="username"
+              autoComplete="email"
+              required
             />
           </label>
 
-          <label style={styles.label}>
-            Password
-            <input
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder="Enter password"
-              style={styles.input}
-              autoComplete={
-                mode === "signup" ? "new-password" : "current-password"
-              }
-            />
-          </label>
+          {!isForgot && (
+            <label style={styles.label}>
+              Password
+              <input
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder="Enter password"
+                style={styles.input}
+                autoComplete={
+                  isSignup ? "new-password" : "current-password"
+                }
+                required
+              />
+            </label>
+          )}
 
           {message ? <div style={styles.message}>{message}</div> : null}
 
@@ -157,14 +196,35 @@ export default function AuthModal({
               cursor: isLoading ? "not-allowed" : "pointer",
             }}
           >
-            {isLoading
-              ? mode === "signup"
-                ? "Creating account..."
-                : "Signing in..."
-              : mode === "signup"
-              ? "Create account"
-              : "Sign in"}
+            {submitLabel}
           </button>
+
+          {mode === "login" && (
+            <button
+              type="button"
+              onClick={() => {
+                setMode("forgot");
+                setMessage("");
+                setPassword("");
+              }}
+              style={styles.forgotLink}
+            >
+              Forgot password?
+            </button>
+          )}
+
+          {isForgot && (
+            <button
+              type="button"
+              onClick={() => {
+                setMode("login");
+                setMessage("");
+              }}
+              style={styles.forgotLink}
+            >
+              ← Back to sign in
+            </button>
+          )}
         </form>
       </div>
     </div>
@@ -296,5 +356,17 @@ const styles = {
     background: "linear-gradient(135deg, #7c3aed 0%, #2563eb 100%)",
     color: "#ffffff",
     boxShadow: "0 10px 24px rgba(37,99,235,0.24)",
+    cursor: "pointer",
+  },
+  forgotLink: {
+    background: "transparent",
+    border: "none",
+    color: "#a5b4fc",
+    fontSize: "14px",
+    fontWeight: 600,
+    cursor: "pointer",
+    textAlign: "center",
+    padding: "4px",
+    textDecoration: "underline",
   },
 };

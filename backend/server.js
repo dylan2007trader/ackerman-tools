@@ -2,6 +2,7 @@ require("dotenv").config({ path: require("path").join(__dirname, ".env"), overri
 
 const path = require("path");
 const fs = require("fs");
+const crypto = require("crypto");
 const express = require("express");
 const cors = require("cors");
 const bcrypt = require("bcryptjs");
@@ -9,6 +10,7 @@ const jwt = require("jsonwebtoken");
 const Stripe = require("stripe");
 const sqlite3 = require("sqlite3");
 const { open } = require("sqlite");
+const { Resend } = require("resend");
 const {
   buildPremiumResume,
   buildStructuredCoverLetter,
@@ -24,6 +26,12 @@ const DATABASE_PATH =
 const stripe = process.env.STRIPE_SECRET_KEY
   ? new Stripe(process.env.STRIPE_SECRET_KEY)
   : null;
+const resend = process.env.RESEND_API_KEY
+  ? new Resend(process.env.RESEND_API_KEY)
+  : null;
+const RESET_FROM_EMAIL =
+  process.env.RESET_FROM_EMAIL || "onboarding@resend.dev";
+const RESET_TOKEN_TTL_MINUTES = 60;
 
 const APP_IDS = {
   RESUME_SUITE: "resume-suite",
@@ -75,6 +83,42 @@ async function initDb() {
   } catch (err) {
     // Column already exists, ignore
   }
+
+  // Add email column to users (idempotent migration)
+  try {
+    await db.exec(`ALTER TABLE users ADD COLUMN email TEXT`);
+  } catch (err) {
+    // Column already exists, ignore
+  }
+
+  // Unique index on email (allows multiple NULL during transition, unique non-NULL)
+  await db.exec(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL`
+  );
+
+  // Backfill the original onlyfor user (id=1) with their Stripe email so they
+  // can sign in with email after this change. One-time, no-op once set.
+  try {
+    await db.run(
+      `UPDATE users SET email = ? WHERE id = 1 AND (email IS NULL OR email = '')`,
+      "dackerm2007@gmail.com"
+    );
+  } catch (err) {
+    console.error("Backfill onlyfor email failed (non-fatal):", err.message);
+  }
+
+  // Password reset tokens (sha256-hashed; raw token only ever exists in the email link)
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS password_resets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      token_hash TEXT NOT NULL UNIQUE,
+      expires_at TEXT NOT NULL,
+      used_at TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(user_id) REFERENCES users(id)
+    );
+  `);
 }
 
 function normalizeUsername(value = "") {
@@ -83,19 +127,60 @@ function normalizeUsername(value = "") {
     .toLowerCase();
 }
 
+function normalizeEmail(value = "") {
+  return String(value || "")
+    .trim()
+    .toLowerCase();
+}
+
+function isValidEmail(email) {
+  return typeof email === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
 function signToken(user) {
-  return jwt.sign({ userId: user.id, username: user.username }, JWT_SECRET, {
-    expiresIn: "7d",
-  });
+  return jwt.sign(
+    { userId: user.id, email: user.email || null, username: user.username },
+    JWT_SECRET,
+    { expiresIn: "7d" }
+  );
 }
 
 function sanitizeUser(user, purchasedApps = []) {
   return {
     id: user.id,
     username: user.username,
+    email: user.email || null,
     purchasedApps,
     createdAt: user.created_at,
   };
+}
+
+function hashResetToken(rawToken) {
+  return crypto.createHash("sha256").update(rawToken).digest("hex");
+}
+
+async function sendPasswordResetEmail({ toEmail, resetUrl }) {
+  if (!resend) {
+    console.warn("RESEND_API_KEY not set — skipping email send");
+    return { skipped: true };
+  }
+  return resend.emails.send({
+    from: RESET_FROM_EMAIL,
+    to: toEmail,
+    subject: "Reset your Ackerman Tools password",
+    html: `
+      <div style="font-family: Inter, Arial, sans-serif; color: #0f172a; max-width: 480px;">
+        <h2 style="margin-bottom: 12px;">Reset your password</h2>
+        <p>Someone (hopefully you) requested a password reset for your Ackerman Tools account.</p>
+        <p>Click the button below to set a new password. This link expires in ${RESET_TOKEN_TTL_MINUTES} minutes.</p>
+        <p style="margin: 24px 0;">
+          <a href="${resetUrl}" style="background:#2563eb;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:600;">Reset password</a>
+        </p>
+        <p style="color:#64748b;font-size:13px;">If you didn't request this, you can safely ignore this email — your password won't change.</p>
+        <p style="color:#94a3b8;font-size:12px;">Reset URL: <a href="${resetUrl}">${resetUrl}</a></p>
+      </div>
+    `,
+  });
 }
 
 async function getPurchasedApps(userId) {
@@ -112,6 +197,10 @@ async function getUserById(userId) {
 
 async function getUserByUsername(username) {
   return db.get(`SELECT * FROM users WHERE username = ?`, username);
+}
+
+async function getUserByEmail(email) {
+  return db.get(`SELECT * FROM users WHERE email = ?`, email);
 }
 
 async function buildAuthResponse(user) {
@@ -272,16 +361,13 @@ app.get("/api/health", (_req, res) => {
 
 app.post("/api/auth/signup", async (req, res) => {
   try {
-    const username = normalizeUsername(req.body?.username);
+    const email = normalizeEmail(req.body?.email);
     const password = String(req.body?.password || "").trim();
 
-    if (username.length < 3) {
+    if (!isValidEmail(email)) {
       return res
         .status(400)
-        .json({
-          ok: false,
-          message: "Username must be at least 3 characters.",
-        });
+        .json({ ok: false, message: "Enter a valid email address." });
     }
     if (password.length < 6) {
       return res
@@ -292,17 +378,19 @@ app.post("/api/auth/signup", async (req, res) => {
         });
     }
 
-    const existing = await getUserByUsername(username);
+    const existing = await getUserByEmail(email);
     if (existing) {
       return res
         .status(409)
-        .json({ ok: false, message: "That username already exists." });
+        .json({ ok: false, message: "An account with that email already exists." });
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
+    // username column is NOT NULL UNIQUE — set it to email so old code paths still work
     const result = await db.run(
-      `INSERT INTO users (username, password_hash) VALUES (?, ?)`,
-      username,
+      `INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)`,
+      email,
+      email,
       passwordHash
     );
     const user = await getUserById(result.lastID);
@@ -318,21 +406,21 @@ app.post("/api/auth/signup", async (req, res) => {
 
 app.post("/api/auth/login", async (req, res) => {
   try {
-    const username = normalizeUsername(req.body?.username);
+    const email = normalizeEmail(req.body?.email);
     const password = String(req.body?.password || "").trim();
-    const user = await getUserByUsername(username);
+    const user = await getUserByEmail(email);
 
     if (!user) {
       return res
         .status(401)
-        .json({ ok: false, message: "Username or password did not match." });
+        .json({ ok: false, message: "Email or password did not match." });
     }
 
     const matches = await bcrypt.compare(password, user.password_hash);
     if (!matches) {
       return res
         .status(401)
-        .json({ ok: false, message: "Username or password did not match." });
+        .json({ ok: false, message: "Email or password did not match." });
     }
 
     const auth = await buildAuthResponse(user);
@@ -340,6 +428,108 @@ app.post("/api/auth/login", async (req, res) => {
   } catch (error) {
     console.error(error);
     return res.status(500).json({ ok: false, message: "Could not sign in." });
+  }
+});
+
+app.post("/api/auth/forgot-password", async (req, res) => {
+  // Always return success — never leak whether an email is registered
+  const genericResponse = {
+    ok: true,
+    message:
+      "If an account exists for that email, a reset link is on its way.",
+  };
+
+  try {
+    const email = normalizeEmail(req.body?.email);
+    if (!isValidEmail(email)) return res.json(genericResponse);
+
+    const user = await getUserByEmail(email);
+    if (!user) return res.json(genericResponse);
+
+    const rawToken = crypto.randomBytes(32).toString("hex");
+    const tokenHash = hashResetToken(rawToken);
+    const expiresAt = new Date(
+      Date.now() + RESET_TOKEN_TTL_MINUTES * 60 * 1000
+    ).toISOString();
+
+    await db.run(
+      `INSERT INTO password_resets (user_id, token_hash, expires_at) VALUES (?, ?, ?)`,
+      user.id,
+      tokenHash,
+      expiresAt
+    );
+
+    const frontendOrigin = (FRONTEND_ORIGIN.split(",")[0] || "").trim();
+    const resetUrl = `${frontendOrigin}/reset-password?token=${rawToken}`;
+
+    try {
+      await sendPasswordResetEmail({ toEmail: email, resetUrl });
+    } catch (sendErr) {
+      console.error("Resend send failed:", sendErr.message || sendErr);
+      // Still return generic success — don't leak failure either
+    }
+
+    return res.json(genericResponse);
+  } catch (error) {
+    console.error("forgot-password error:", error);
+    return res.json(genericResponse);
+  }
+});
+
+app.post("/api/auth/reset-password", async (req, res) => {
+  try {
+    const token = String(req.body?.token || "").trim();
+    const password = String(req.body?.password || "").trim();
+
+    if (!token) {
+      return res
+        .status(400)
+        .json({ ok: false, message: "Reset link is missing or invalid." });
+    }
+    if (password.length < 6) {
+      return res
+        .status(400)
+        .json({
+          ok: false,
+          message: "Password must be at least 6 characters.",
+        });
+    }
+
+    const tokenHash = hashResetToken(token);
+    const row = await db.get(
+      `SELECT * FROM password_resets WHERE token_hash = ?`,
+      tokenHash
+    );
+
+    if (!row || row.used_at || new Date(row.expires_at) < new Date()) {
+      return res
+        .status(400)
+        .json({
+          ok: false,
+          message: "Reset link is expired or already used. Request a new one.",
+        });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    await db.run(
+      `UPDATE users SET password_hash = ? WHERE id = ?`,
+      passwordHash,
+      row.user_id
+    );
+    await db.run(
+      `UPDATE password_resets SET used_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      row.id
+    );
+
+    return res.json({
+      ok: true,
+      message: "Password updated. You can sign in now.",
+    });
+  } catch (error) {
+    console.error("reset-password error:", error);
+    return res
+      .status(500)
+      .json({ ok: false, message: "Could not reset password." });
   }
 });
 
