@@ -143,16 +143,11 @@ export default function ResumeToolPage() {
   }
 
   const [categoryId, setCategoryIdRaw] = useState(() => load("rt_categoryId", "engineering"));
-  const [subRole, setSubRoleRaw] = useState(() => load("rt_subRole", "Software Engineering"));
-  const [otherRoleText, setOtherRoleTextRaw] = useState(() => load("rt_otherRoleText", ""));
+  const [roleText, setRoleTextRaw] = useState(() => load("rt_roleText", ""));
   const [targetType, setTargetTypeRaw] = useState(() => load("rt_targetType", "job"));
 
-  // Derived: the targetRole string passed to the backend.
-  // For "other" category, use the free-text input. Otherwise use the subcategory.
-  const role =
-    categoryId === "other"
-      ? otherRoleText.trim()
-      : (subRole || "").trim();
+  // Free-text target role passed to the backend.
+  const role = (roleText || "").trim();
   const [resumeText, setResumeTextRaw] = useState(() => load("rt_resumeText", ""));
   const [jobDescription, setJobDescriptionRaw] = useState(() => load("rt_jobDescription", ""));
   const [fileName, setFileNameRaw] = useState(() => load("rt_fileName", ""));
@@ -165,16 +160,12 @@ export default function ResumeToolPage() {
   const setCategoryId = (v) => {
     setCategoryIdRaw(v);
     save("rt_categoryId", v);
-    // When switching categories, default to first subcategory of the new one
-    const cat = findCategory(v);
-    const next = cat?.subcategories?.[0] || "";
-    if (v !== "other" && next) {
-      setSubRoleRaw(next);
-      save("rt_subRole", next);
-    }
+    // Clear role text on category change so the suggestion dropdown shows
+    // ALL suggestions for the new category instead of being filtered to one
+    setRoleTextRaw("");
+    save("rt_roleText", "");
   };
-  const setSubRole = (v) => { setSubRoleRaw(v); save("rt_subRole", v); };
-  const setOtherRoleText = (v) => { setOtherRoleTextRaw(v); save("rt_otherRoleText", v); };
+  const setRoleText = (v) => { setRoleTextRaw(v); save("rt_roleText", v); };
   const setTargetType = (v) => { setTargetTypeRaw(v); save("rt_targetType", v); };
   const setResumeText = (v) => { setResumeTextRaw(v); save("rt_resumeText", v); };
   const setJobDescription = (v) => { setJobDescriptionRaw(v); save("rt_jobDescription", v); };
@@ -487,24 +478,20 @@ export default function ResumeToolPage() {
                 </select>
               </div>
               <div style={styles.controlCard}>
-                <div style={styles.cardLabel}>
-                  {categoryId === "other" ? "Type your target role" : "Specific role"}
-                </div>
-                {categoryId === "other" ? (
-                  <input
-                    type="text"
-                    value={otherRoleText}
-                    onChange={(e) => setOtherRoleText(e.target.value)}
-                    placeholder="e.g. Air Traffic Controller"
-                    style={styles.select}
-                  />
-                ) : (
-                  <select value={subRole} onChange={(e) => setSubRole(e.target.value)} style={styles.select}>
-                    {(findCategory(categoryId)?.subcategories || []).map((sub) => (
-                      <option key={sub} value={sub}>{sub}</option>
-                    ))}
-                  </select>
-                )}
+                <div style={styles.cardLabel}>Specific role (pick or type your own)</div>
+                <input
+                  type="text"
+                  list="role-suggestions-upgrade"
+                  value={roleText}
+                  onChange={(e) => setRoleText(e.target.value)}
+                  placeholder="e.g. Optics Engineering"
+                  style={styles.select}
+                />
+                <datalist id="role-suggestions-upgrade">
+                  {(findCategory(categoryId)?.suggestions || []).map((s) => (
+                    <option key={s} value={s} />
+                  ))}
+                </datalist>
               </div>
               <div style={styles.controlCard}>
                 <div style={styles.cardLabel}>Target type</div>
@@ -706,28 +693,20 @@ export default function ResumeToolPage() {
           </div>
 
           <div style={styles.controlCard}>
-            <div style={styles.cardLabel}>
-              {categoryId === "other" ? "3. Type your target role" : "3. Specific role"}
-            </div>
-            {categoryId === "other" ? (
-              <input
-                type="text"
-                value={otherRoleText}
-                onChange={(event) => setOtherRoleText(event.target.value)}
-                placeholder="e.g. Air Traffic Controller"
-                style={styles.select}
-              />
-            ) : (
-              <select
-                value={subRole}
-                onChange={(event) => setSubRole(event.target.value)}
-                style={styles.select}
-              >
-                {(findCategory(categoryId)?.subcategories || []).map((sub) => (
-                  <option key={sub} value={sub}>{sub}</option>
-                ))}
-              </select>
-            )}
+            <div style={styles.cardLabel}>3. Specific role (pick or type your own)</div>
+            <input
+              type="text"
+              list="role-suggestions-grader"
+              value={roleText}
+              onChange={(event) => setRoleText(event.target.value)}
+              placeholder="e.g. Optics Engineering"
+              style={styles.select}
+            />
+            <datalist id="role-suggestions-grader">
+              {(findCategory(categoryId)?.suggestions || []).map((s) => (
+                <option key={s} value={s} />
+              ))}
+            </datalist>
           </div>
 
           <div style={styles.controlCard}>

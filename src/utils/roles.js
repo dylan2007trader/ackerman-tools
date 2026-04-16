@@ -1,25 +1,45 @@
-// Shared category → subcategory lookup for the role picker.
-// "Other" is a free-text input the user types themselves.
+// Shared category → subcategory suggestions for the role picker.
+//
+// The subcategory input is ALWAYS free-text (with the list below as
+// autocomplete suggestions), so users with niche or unlisted roles can
+// type anything (e.g. "Computer Science", "Optics Engineering",
+// "UX Researcher", "Air Traffic Controller").
 
 export const ROLE_CATEGORIES = [
   {
     id: "engineering",
     label: "Engineering",
-    subcategories: [
+    suggestions: [
       "Software Engineering",
+      "Computer Science",
+      "Computer Engineering",
       "Mechanical Engineering",
       "Civil Engineering",
       "Electrical Engineering",
       "Chemical Engineering",
       "Aerospace Engineering",
+      "Astronautical Engineering",
       "Biomedical Engineering",
       "Industrial Engineering",
+      "Systems Engineering",
+      "Optical / Photonics Engineering",
+      "Materials Engineering",
+      "Environmental Engineering",
+      "Petroleum Engineering",
+      "Nuclear Engineering",
+      "Robotics Engineering",
+      "Mining Engineering",
+      "Marine / Naval Engineering",
+      "Agricultural Engineering",
+      "Geological Engineering",
+      "Manufacturing Engineering",
+      "Structural Engineering",
     ],
   },
   {
     id: "business",
     label: "Business / Finance",
-    subcategories: [
+    suggestions: [
       "Accounting",
       "Investment Banking",
       "Consulting",
@@ -28,74 +48,182 @@ export const ROLE_CATEGORIES = [
       "Human Resources",
       "Operations",
       "Product Management",
+      "Project Management",
+      "Supply Chain",
+      "Real Estate",
+      "Entrepreneurship",
+      "Financial Analyst",
+      "Wealth Management",
+      "Insurance",
+      "Risk Management",
+      "Business Development",
+      "Brand Management",
+    ],
+  },
+  {
+    id: "tech",
+    label: "Tech / Data",
+    suggestions: [
+      "Data Scientist",
+      "Data Analyst",
+      "Data Engineer",
+      "Machine Learning Engineer",
+      "DevOps Engineer",
+      "Site Reliability Engineer",
+      "Cybersecurity Analyst",
+      "Cloud Engineer",
+      "Network Engineer",
+      "QA / Test Engineer",
+      "Mobile Developer",
+      "Game Developer",
+      "Blockchain Developer",
+      "AI Researcher",
+      "Solutions Architect",
+      "IT Support",
     ],
   },
   {
     id: "healthcare",
     label: "Healthcare",
-    subcategories: [
+    suggestions: [
       "Nursing",
-      "Medicine",
+      "Medicine / Doctor",
       "Pharmacy",
       "Physical Therapy",
+      "Occupational Therapy",
       "Dental",
       "Public Health",
+      "Medical Assistant",
+      "Surgical Technologist",
+      "Radiology Technician",
+      "Dietitian / Nutritionist",
+      "Speech Pathology",
+      "Veterinary",
+      "Mental Health Counselor",
+      "Healthcare Administration",
+      "Paramedic / EMT",
     ],
   },
   {
     id: "education",
     label: "Education",
-    subcategories: [
+    suggestions: [
       "K-12 Teaching",
-      "Higher Education",
+      "Higher Education / Professor",
       "Educational Administration",
+      "Curriculum Designer",
+      "School Counselor",
+      "Special Education",
       "EdTech",
+      "Tutor",
+      "Librarian",
+      "Educational Researcher",
     ],
   },
   {
     id: "creative",
     label: "Creative / Design",
-    subcategories: [
+    suggestions: [
       "Graphic Design",
       "UX / UI Design",
+      "Product Designer",
       "Content Writing",
+      "Copywriter",
       "Video / Film",
       "Photography",
+      "Illustrator",
+      "Animator",
+      "Art Director",
+      "Industrial / Product Designer",
+      "Fashion Designer",
+      "Interior Designer",
+      "Architect",
+      "Music / Audio",
+      "Social Media Manager",
     ],
   },
   {
     id: "science",
     label: "Science / Research",
-    subcategories: [
-      "Data Science",
+    suggestions: [
       "Biology",
       "Chemistry",
       "Physics",
       "Statistics",
+      "Mathematics",
       "Lab Research",
+      "Geology",
+      "Astronomy",
+      "Neuroscience",
+      "Microbiology",
+      "Genetics",
+      "Marine Biology",
+      "Environmental Science",
+      "Quantitative Researcher",
+      "Pharmaceutical Research",
     ],
   },
   {
     id: "trades",
-    label: "Trades",
-    subcategories: [
+    label: "Trades / Skilled Labor",
+    suggestions: [
       "Construction",
       "Electrician",
       "Plumbing",
       "HVAC",
       "Welding",
-      "Automotive",
+      "Automotive Technician",
+      "Carpentry",
+      "Heavy Equipment Operator",
+      "Machinist",
+      "Locksmith",
+      "Landscaping",
+      "Painter",
     ],
   },
   {
     id: "legal",
-    label: "Legal",
-    subcategories: ["Lawyer", "Paralegal", "Compliance"],
+    label: "Legal / Government",
+    suggestions: [
+      "Lawyer",
+      "Paralegal",
+      "Compliance Officer",
+      "Policy Analyst",
+      "Public Administration",
+      "Diplomat",
+      "Government Affairs",
+      "Judge / Magistrate",
+    ],
+  },
+  {
+    id: "service",
+    label: "Service / Hospitality",
+    suggestions: [
+      "Restaurant Management",
+      "Chef / Cook",
+      "Hotel Management",
+      "Event Planner",
+      "Travel / Tourism",
+      "Customer Service",
+      "Retail Management",
+      "Bartender / Server",
+    ],
   },
   {
     id: "other",
-    label: "Other",
-    subcategories: [], // free-text instead
+    label: "Other (type your own)",
+    suggestions: [
+      "Air Traffic Controller",
+      "Pilot",
+      "Military / Defense",
+      "Athlete / Coach",
+      "Professional Driver",
+      "Real Estate Agent",
+      "Personal Trainer",
+      "Translator",
+      "Journalist",
+      "Non-profit Program Manager",
+    ],
   },
 ];
 
@@ -109,14 +237,4 @@ export const TARGET_TYPES = [
 // Find a category by id
 export function findCategory(categoryId) {
   return ROLE_CATEGORIES.find((cat) => cat.id === categoryId) || null;
-}
-
-// Build the targetRole string passed to backend Claude calls.
-// For "Other" categories the subcategory is the free-text input.
-export function buildTargetRole(categoryId, subcategoryOrFreeText) {
-  if (!subcategoryOrFreeText) return "";
-  const category = findCategory(categoryId);
-  if (!category) return subcategoryOrFreeText;
-  if (category.id === "other") return subcategoryOrFreeText;
-  return subcategoryOrFreeText;
 }
