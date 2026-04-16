@@ -9,7 +9,7 @@ import ImprovementSections from "../components/resume/ImprovementSections";
 import PremiumUpsell from "../components/resume/PremiumUpsell";
 import AuthModal from "../components/auth/AuthModal";
 
-import { analyzeResume } from "../utils/resumeAnalyzer";
+import { ROLE_CATEGORIES, findCategory } from "../utils/roles";
 import { downloadResumeText, downloadResumeDocx, downloadResumePdf } from "../utils/resumeUpgrader";
 import {
   buildCoverLetterText,
@@ -25,6 +25,7 @@ import {
   generatePremiumCoverLetter,
   startCheckout,
   confirmCheckout,
+  gradeResumeAI,
 } from "../services/accountStore";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
@@ -141,8 +142,17 @@ export default function ResumeToolPage() {
     try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
   }
 
-  const [role, setRoleRaw] = useState(() => load("rt_role", "software engineer"));
+  const [categoryId, setCategoryIdRaw] = useState(() => load("rt_categoryId", "engineering"));
+  const [subRole, setSubRoleRaw] = useState(() => load("rt_subRole", "Software Engineering"));
+  const [otherRoleText, setOtherRoleTextRaw] = useState(() => load("rt_otherRoleText", ""));
   const [targetType, setTargetTypeRaw] = useState(() => load("rt_targetType", "job"));
+
+  // Derived: the targetRole string passed to the backend.
+  // For "other" category, use the free-text input. Otherwise use the subcategory.
+  const role =
+    categoryId === "other"
+      ? otherRoleText.trim()
+      : (subRole || "").trim();
   const [resumeText, setResumeTextRaw] = useState(() => load("rt_resumeText", ""));
   const [jobDescription, setJobDescriptionRaw] = useState(() => load("rt_jobDescription", ""));
   const [fileName, setFileNameRaw] = useState(() => load("rt_fileName", ""));
@@ -152,7 +162,19 @@ export default function ResumeToolPage() {
   const [activeSection, setActiveSectionRaw] = useState(() => load("rt_activeSection", "grader"));
 
   // Wrap setters to auto-save on every change
-  const setRole = (v) => { setRoleRaw(v); save("rt_role", v); };
+  const setCategoryId = (v) => {
+    setCategoryIdRaw(v);
+    save("rt_categoryId", v);
+    // When switching categories, default to first subcategory of the new one
+    const cat = findCategory(v);
+    const next = cat?.subcategories?.[0] || "";
+    if (v !== "other" && next) {
+      setSubRoleRaw(next);
+      save("rt_subRole", next);
+    }
+  };
+  const setSubRole = (v) => { setSubRoleRaw(v); save("rt_subRole", v); };
+  const setOtherRoleText = (v) => { setOtherRoleTextRaw(v); save("rt_otherRoleText", v); };
   const setTargetType = (v) => { setTargetTypeRaw(v); save("rt_targetType", v); };
   const setResumeText = (v) => { setResumeTextRaw(v); save("rt_resumeText", v); };
   const setJobDescription = (v) => { setJobDescriptionRaw(v); save("rt_jobDescription", v); };
@@ -231,12 +253,35 @@ export default function ResumeToolPage() {
       setError("Upload your resume or paste the text first.");
       return;
     }
+    if (!role) {
+      setError("Pick a target role first (or type one if using \"Other\").");
+      return;
+    }
+    if (!currentUser) {
+      setAuthOpen(true);
+      setError("Sign in to grade your resume — it's free, just helps us prevent abuse.");
+      return;
+    }
 
     setIsAnalyzing(true);
 
     try {
-      const nextAnalysis = analyzeResume(resumeText, role, targetType);
-      setAnalysis(nextAnalysis);
+      const result = await gradeResumeAI({
+        resumeText,
+        targetRole: role,
+        targetType,
+      });
+      if (!result?.ok) {
+        setError(result?.message || "Could not grade resume right now.");
+        setIsAnalyzing(false);
+        return;
+      }
+      setAnalysis(result.analysis);
+      if (result.usage) {
+        setPremiumMessage(
+          `Grade ${result.usage.used} of ${result.usage.limit} used today.`
+        );
+      }
     } catch (err) {
       setError("Something went wrong while analyzing the resume.");
       console.error(err);
@@ -434,20 +479,40 @@ export default function ResumeToolPage() {
             )}
             <div style={styles.controlsGrid}>
               <div style={styles.controlCard}>
-                <div style={styles.cardLabel}>Role track</div>
-                <select value={role} onChange={(e) => setRole(e.target.value)} style={styles.select}>
-                  <option value="software engineer">Software Engineer</option>
-                  <option value="data scientist">Data Scientist</option>
-                  <option value="backend developer">Backend Developer</option>
-                  <option value="frontend developer">Frontend Developer</option>
-                  <option value="full stack developer">Full Stack Developer</option>
+                <div style={styles.cardLabel}>Career field</div>
+                <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} style={styles.select}>
+                  {ROLE_CATEGORIES.map((cat) => (
+                    <option key={cat.id} value={cat.id}>{cat.label}</option>
+                  ))}
                 </select>
+              </div>
+              <div style={styles.controlCard}>
+                <div style={styles.cardLabel}>
+                  {categoryId === "other" ? "Type your target role" : "Specific role"}
+                </div>
+                {categoryId === "other" ? (
+                  <input
+                    type="text"
+                    value={otherRoleText}
+                    onChange={(e) => setOtherRoleText(e.target.value)}
+                    placeholder="e.g. Air Traffic Controller"
+                    style={styles.select}
+                  />
+                ) : (
+                  <select value={subRole} onChange={(e) => setSubRole(e.target.value)} style={styles.select}>
+                    {(findCategory(categoryId)?.subcategories || []).map((sub) => (
+                      <option key={sub} value={sub}>{sub}</option>
+                    ))}
+                  </select>
+                )}
               </div>
               <div style={styles.controlCard}>
                 <div style={styles.cardLabel}>Target type</div>
                 <select value={targetType} onChange={(e) => setTargetType(e.target.value)} style={styles.select}>
-                  <option value="job">Job</option>
+                  <option value="job">Full-time job</option>
                   <option value="internship">Internship</option>
+                  <option value="co-op">Co-op</option>
+                  <option value="contract">Contract / Freelance</option>
                 </select>
               </div>
             </div>
@@ -628,29 +693,54 @@ export default function ResumeToolPage() {
           </div>
 
           <div style={styles.controlCard}>
-            <div style={styles.cardLabel}>2. Choose role track</div>
+            <div style={styles.cardLabel}>2. Career field</div>
             <select
-              value={role}
-              onChange={(event) => setRole(event.target.value)}
+              value={categoryId}
+              onChange={(event) => setCategoryId(event.target.value)}
               style={styles.select}
             >
-              <option value="software engineer">Software Engineer</option>
-              <option value="data scientist">Data Scientist</option>
-              <option value="backend developer">Backend Developer</option>
-              <option value="frontend developer">Frontend Developer</option>
-              <option value="full stack developer">Full Stack Developer</option>
+              {ROLE_CATEGORIES.map((cat) => (
+                <option key={cat.id} value={cat.id}>{cat.label}</option>
+              ))}
             </select>
           </div>
 
           <div style={styles.controlCard}>
-            <div style={styles.cardLabel}>3. Choose target type</div>
+            <div style={styles.cardLabel}>
+              {categoryId === "other" ? "3. Type your target role" : "3. Specific role"}
+            </div>
+            {categoryId === "other" ? (
+              <input
+                type="text"
+                value={otherRoleText}
+                onChange={(event) => setOtherRoleText(event.target.value)}
+                placeholder="e.g. Air Traffic Controller"
+                style={styles.select}
+              />
+            ) : (
+              <select
+                value={subRole}
+                onChange={(event) => setSubRole(event.target.value)}
+                style={styles.select}
+              >
+                {(findCategory(categoryId)?.subcategories || []).map((sub) => (
+                  <option key={sub} value={sub}>{sub}</option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          <div style={styles.controlCard}>
+            <div style={styles.cardLabel}>4. Target type</div>
             <select
               value={targetType}
               onChange={(event) => setTargetType(event.target.value)}
               style={styles.select}
             >
-              <option value="job">Job</option>
+              <option value="job">Full-time job</option>
               <option value="internship">Internship</option>
+              <option value="co-op">Co-op</option>
+              <option value="contract">Contract / Freelance</option>
             </select>
           </div>
         </div>

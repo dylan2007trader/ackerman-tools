@@ -613,6 +613,22 @@ export async function generatePremiumResume({ resumeText, targetRole, appId }) {
   }
 }
 
+// Free AI grader. Requires sign-in. 10/day per account rate limit.
+export async function gradeResumeAI({ resumeText, targetRole, targetType }) {
+  try {
+    return await request("/api/grader/analyze", {
+      method: "POST",
+      body: { resumeText, targetRole, targetType },
+      auth: true,
+    });
+  } catch (error) {
+    return {
+      ok: false,
+      message: "Could not reach the grader. Try again in a moment.",
+    };
+  }
+}
+
 export async function generatePremiumCoverLetter({
   resumeText,
   targetRole,

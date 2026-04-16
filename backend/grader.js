@@ -1,0 +1,292 @@
+// AI-powered resume grader.
+//
+// Combines:
+//   1. Rule-based objective metrics (word count, bullet count, action verb rate,
+//      metric rate, section detection, contact checks) — these work for ANY major.
+//   2. Claude Haiku 4.5 for role-specific keyword analysis + targeted improvement
+//      suggestions for the user's chosen category/subcategory.
+//
+// Returns a single shape compatible with the existing ResumeToolPage UI.
+
+const Anthropic = require("@anthropic-ai/sdk");
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const MODEL = "claude-haiku-4-5-20251001";
+const MOCK_AI = process.env.MOCK_AI === "true";
+
+const ACTION_VERBS = [
+  "built", "developed", "designed", "created", "implemented", "led",
+  "managed", "wrote", "optimized", "delivered", "analyzed", "engineered",
+  "launched", "improved", "co-founded", "resolved", "supported", "automated",
+  "maintained", "directed", "coordinated", "researched", "trained", "taught",
+  "presented", "negotiated", "treated", "diagnosed", "operated", "constructed",
+  "installed", "repaired", "advised", "drafted", "negotiated", "audited",
+  "investigated", "filed", "litigated", "edited", "produced", "marketed",
+  "sold", "forecasted", "budgeted", "reviewed", "supervised", "mentored",
+];
+
+const METRIC_PATTERNS = [
+  /\b\d+%/, /\$\d/, /\b\d{1,3}(?:,\d{3})+/, /\b\d+(?:\.\d+)?\s*(?:k|m|million|billion|thousand)\b/i,
+  /\b\d+(?:\.\d+)?\s*(?:hours?|hrs?|weeks?|months?|years?|days?)\b/i,
+  /\b\d+(?:\.\d+)?\s*(?:patients?|students?|clients?|customers?|users?|employees?|projects?|cases?)\b/i,
+  /\b\d+(?:\.\d+)?\s*(?:wpm|gpa|sat|act)\b/i,
+];
+
+function normalizeWhitespace(value = "") {
+  return String(value || "").replace(/\r/g, "").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function extractLines(text = "") {
+  return String(text || "")
+    .split("\n")
+    .map((line) => line.replace(/^[-*•\u2022\s]+/, "").trim())
+    .filter(Boolean);
+}
+
+function detectBullets(lines = []) {
+  return lines.filter((line) =>
+    ACTION_VERBS.some((verb) => line.toLowerCase().startsWith(verb))
+  );
+}
+
+function detectMetricLines(lines = []) {
+  return lines.filter((line) => METRIC_PATTERNS.some((p) => p.test(line)));
+}
+
+// Run the rule-based portion that doesn't depend on industry
+function computeBaseMetrics(resumeText) {
+  const normalized = normalizeWhitespace(resumeText);
+  const lower = normalized.toLowerCase();
+  const lines = extractLines(normalized);
+  const wordCount = normalized.split(/\s+/).filter(Boolean).length;
+
+  const actionLines = detectBullets(lines);
+  const metricLines = detectMetricLines(lines);
+  const bulletCount = lines.length;
+  const actionVerbRate = bulletCount ? Math.round((actionLines.length / bulletCount) * 100) : 0;
+  const metricRate = bulletCount ? Math.round((metricLines.length / bulletCount) * 100) : 0;
+
+  const hasEmail = /\S+@\S+\.\S+/.test(normalized);
+  const hasPhone = /(\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4})/.test(normalized);
+  const hasLinkedIn = /linkedin\.com\//i.test(normalized);
+  const hasGitHub = /github\.com\//i.test(normalized);
+
+  const hasEducation = /\beducation\b/.test(lower);
+  const hasExperience = /\bexperience\b|\bwork history\b/.test(lower);
+  const hasProjects = /\bprojects?\b/.test(lower);
+  const hasSkills = /\bskills?\b/.test(lower);
+  const hasSummary = /\bsummary\b|\bobjective\b/.test(lower);
+
+  const missingSections = [];
+  if (!hasEducation) missingSections.push("Education");
+  if (!hasExperience) missingSections.push("Experience");
+  if (!hasSkills) missingSections.push("Skills");
+
+  return {
+    wordCount,
+    bulletCount,
+    achievementLineCount: actionLines.length,
+    linesWithMetricsCount: metricLines.length,
+    actionVerbRate,
+    metricRate,
+    strongExamples: actionLines.slice(0, 4),
+    weakExamples: lines.filter((l) => !actionLines.includes(l)).slice(0, 4),
+    contactChecks: { hasEmail, hasPhone, hasLinkedIn, hasGitHub },
+    sectionsFound: {
+      education: hasEducation,
+      experience: hasExperience,
+      skills: hasSkills,
+      projects: hasProjects,
+      summary: hasSummary,
+    },
+    missingSections,
+  };
+}
+
+// MAX truncate to keep token cost bounded
+function truncateResume(text, maxChars = 4000) {
+  if (text.length <= maxChars) return text;
+  return text.slice(0, maxChars) + "\n[...truncated for grading]";
+}
+
+function safeJsonParse(text) {
+  try {
+    return JSON.parse(text);
+  } catch (err) {
+    // Try to extract a JSON object from a wrapped response
+    const match = text.match(/\{[\s\S]*\}/);
+    if (match) {
+      try { return JSON.parse(match[0]); } catch (e) {}
+    }
+    return null;
+  }
+}
+
+// Claude Haiku grader — tight token budget. Returns role-specific signals.
+async function callClaudeGrader({ resumeText, targetRole, targetType }) {
+  const truncated = truncateResume(resumeText);
+  const role = targetRole || "general";
+  const type = targetType || "job";
+
+  const system = `You are a strict but fair resume grader. Given a resume and a target role/career path, evaluate fit and return ONLY a single JSON object (no markdown, no commentary). Schema:
+{
+  "overallScore": 0-100,
+  "keywordMatchScore": 0-100,
+  "structureScore": 0-100,
+  "impactScore": 0-100,
+  "matchedKeywords": ["..."],   // skills/keywords from resume that fit the target role (max 12)
+  "missingKeywords": ["..."],   // important keywords for this role that are MISSING (max 8)
+  "technicalMatches": ["..."],  // technical/professional terms found that fit the role (max 12)
+  "strengths": ["..."],         // 3 short bullet strengths
+  "improvements": [             // 3 actionable improvements specific to the target role
+    {"title": "Short name", "body": "1-2 sentence specific suggestion"}
+  ]
+}
+Be specific to the target role. For non-technical roles, "technicalMatches" can be domain knowledge or certifications. Be concise.`;
+
+  const user = `TARGET ROLE: ${role}
+TARGET TYPE: ${type}
+
+RESUME:
+${truncated}`;
+
+  const message = await anthropic.messages.create({
+    model: MODEL,
+    max_tokens: 1200,
+    system,
+    messages: [{ role: "user", content: user }],
+  });
+
+  const text = message.content
+    .filter((b) => b.type === "text")
+    .map((b) => b.text)
+    .join("")
+    .trim();
+
+  const parsed = safeJsonParse(text);
+  if (!parsed) {
+    throw new Error("Grader returned unparseable response");
+  }
+  return parsed;
+}
+
+function mockGraderResponse({ targetRole }) {
+  return {
+    overallScore: 72,
+    keywordMatchScore: 65,
+    structureScore: 80,
+    impactScore: 70,
+    matchedKeywords: ["[mock] teamwork", "[mock] communication"],
+    missingKeywords: ["[mock] leadership", "[mock] " + (targetRole || "domain expertise")],
+    technicalMatches: ["[mock] tool A", "[mock] tool B"],
+    strengths: [
+      "[mock] Clear section structure",
+      "[mock] Action verbs used in most bullets",
+      "[mock] Contact info present",
+    ],
+    improvements: [
+      { title: "[mock] Add metrics", body: "Quantify results in 3+ bullets." },
+      { title: "[mock] Tailor to role", body: `Add keywords relevant to ${targetRole || "your target"}.` },
+      { title: "[mock] Strengthen summary", body: "Open with a 2-line summary." },
+    ],
+  };
+}
+
+// Main entry point — combines base metrics with Claude insights
+async function gradeResume({ resumeText, targetRole, targetType }) {
+  const base = computeBaseMetrics(resumeText);
+  const ai = MOCK_AI
+    ? mockGraderResponse({ targetRole })
+    : await callClaudeGrader({ resumeText, targetRole, targetType });
+
+  // Map Claude's improvements to scoreDrivers shape the UI already understands
+  const scoreDrivers = (ai.improvements || []).map((item) => ({
+    label: item.title,
+    detail: item.body,
+  }));
+
+  const breakdown = {
+    structure: ai.structureScore || 70,
+    keywords: ai.keywordMatchScore || 60,
+    projects: base.sectionsFound.projects ? 80 : 40,
+    experienceImpact: ai.impactScore || 60,
+    metrics: base.metricRate,
+    achievementStrength: base.actionVerbRate,
+  };
+
+  const sectionScores = {
+    header: base.contactChecks.hasEmail ? 85 : 40,
+    education: base.sectionsFound.education ? 80 : 30,
+    experience: base.sectionsFound.experience ? 80 : 30,
+    projects: base.sectionsFound.projects ? 75 : 50,
+    skills: base.sectionsFound.skills ? 80 : 40,
+  };
+
+  const structureEvidence = [];
+  if (base.sectionsFound.education) structureEvidence.push("Education section present");
+  if (base.sectionsFound.experience) structureEvidence.push("Experience section present");
+  if (base.sectionsFound.skills) structureEvidence.push("Skills section present");
+  if (base.sectionsFound.projects) structureEvidence.push("Projects section present");
+  if (base.contactChecks.hasEmail) structureEvidence.push("Email present in header");
+  if (base.contactChecks.hasLinkedIn) structureEvidence.push("LinkedIn link present");
+
+  return {
+    role: targetRole,
+    targetType,
+
+    score: ai.overallScore,
+    overallScore: ai.overallScore,
+    resumeScore: ai.overallScore,
+    atsScore: ai.keywordMatchScore,
+    recruiterScore: ai.impactScore,
+
+    keywordMatchScore: ai.keywordMatchScore,
+    keywordScore: ai.keywordMatchScore,
+    atsKeywordScore: ai.keywordMatchScore,
+
+    actionVerbRate: base.actionVerbRate,
+    metricRate: base.metricRate,
+    bulletCount: base.bulletCount,
+    totalBullets: base.bulletCount,
+    bulletStats: {
+      totalBullets: base.bulletCount,
+      actionVerbRate: base.actionVerbRate,
+      metricRate: base.metricRate,
+    },
+
+    matchedKeywords: ai.matchedKeywords || [],
+    missingKeywords: ai.missingKeywords || [],
+    matchedConcepts: ai.matchedKeywords || [],
+    missingConcepts: ai.missingKeywords || [],
+    keywordGaps: ai.missingKeywords || [],
+    weakBullets: base.weakExamples,
+
+    missingSections: base.missingSections,
+    hasProjects: base.sectionsFound.projects,
+    sectionsFound: base.sectionsFound,
+
+    contactChecks: base.contactChecks,
+
+    wordCount: base.wordCount,
+    technicalMatches: ai.technicalMatches || [],
+    linesWithMetricsCount: base.linesWithMetricsCount,
+    achievementLineCount: base.achievementLineCount,
+    metricCoveragePercent: base.metricRate,
+    strongVerbCoveragePercent: base.actionVerbRate,
+    strongExamples: base.strongExamples,
+    weakExamples: base.weakExamples,
+    structureEvidence,
+    scoreDrivers,
+    strengths: ai.strengths || [],
+
+    breakdown,
+    sectionScores,
+
+    improvementSections: (ai.improvements || []).map((item) => ({
+      title: item.title,
+      bullets: [item.body],
+    })),
+  };
+}
+
+module.exports = { gradeResume, computeBaseMetrics };

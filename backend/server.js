@@ -16,6 +16,9 @@ const {
   buildStructuredCoverLetter,
   buildCoverLetterText,
 } = require("./generator");
+const { gradeResume } = require("./grader");
+
+const GRADER_DAILY_LIMIT = 10;
 
 const app = express();
 const PORT = Number(process.env.PORT || 4000);
@@ -118,6 +121,18 @@ async function initDb() {
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY(user_id) REFERENCES users(id)
     );
+  `);
+
+  // Grader usage tracking — one row per call, used for daily rate limiting
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS grader_usage (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(user_id) REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_grader_usage_user_created
+      ON grader_usage(user_id, created_at);
   `);
 }
 
@@ -673,6 +688,62 @@ app.post("/api/checkout/confirm", requireAuth, async (req, res) => {
     return res
       .status(500)
       .json({ ok: false, message: "Could not confirm checkout." });
+  }
+});
+
+// Free AI-powered grader. Sign-in required + 10/day per account rate limit.
+app.post("/api/grader/analyze", requireAuth, async (req, res) => {
+  try {
+    const resumeText = String(req.body?.resumeText || "").trim();
+    const targetRole = String(req.body?.targetRole || "").trim();
+    const targetType = String(req.body?.targetType || "job").trim();
+
+    if (!resumeText) {
+      return res
+        .status(400)
+        .json({ ok: false, message: "Paste a resume first." });
+    }
+    if (!targetRole) {
+      return res
+        .status(400)
+        .json({ ok: false, message: "Pick a target role first." });
+    }
+
+    // Rate limit: count requests from this user in the last 24h
+    const sinceIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const usageRow = await db.get(
+      `SELECT COUNT(*) AS count FROM grader_usage WHERE user_id = ? AND created_at >= ?`,
+      req.auth.userId,
+      sinceIso
+    );
+    const usedToday = Number(usageRow?.count || 0);
+    if (usedToday >= GRADER_DAILY_LIMIT) {
+      return res.status(429).json({
+        ok: false,
+        message: `Daily limit reached (${GRADER_DAILY_LIMIT} grades per 24 hours). Try again tomorrow.`,
+        limit: GRADER_DAILY_LIMIT,
+        used: usedToday,
+      });
+    }
+
+    const analysis = await gradeResume({ resumeText, targetRole, targetType });
+
+    // Record usage AFTER successful grade so failures don't count against the limit
+    await db.run(
+      `INSERT INTO grader_usage (user_id) VALUES (?)`,
+      req.auth.userId
+    );
+
+    return res.json({
+      ok: true,
+      analysis,
+      usage: { limit: GRADER_DAILY_LIMIT, used: usedToday + 1 },
+    });
+  } catch (error) {
+    console.error("Grader error:", error);
+    return res
+      .status(500)
+      .json({ ok: false, message: "Could not grade resume right now." });
   }
 });
 
