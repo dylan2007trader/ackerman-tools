@@ -199,11 +199,11 @@ async function gradeResume({ resumeText, targetRole, targetType }) {
     ? mockGraderResponse({ targetRole })
     : await callClaudeGrader({ resumeText, targetRole, targetType });
 
-  // Map Claude's improvements to scoreDrivers shape the UI already understands
-  const scoreDrivers = (ai.improvements || []).map((item) => ({
-    label: item.title,
-    detail: item.body,
-  }));
+  // scoreDrivers is an array of plain strings in the UI (renders {item} directly).
+  // Flatten Claude's improvements into human-readable one-liners.
+  const scoreDrivers = (ai.improvements || []).map(
+    (item) => `${item.title}: ${item.body}`
+  );
 
   const breakdown = {
     structure: ai.structureScore || 70,
