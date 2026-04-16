@@ -143,7 +143,7 @@ export default function ResumeToolPage() {
   }
 
   const [categoryId, setCategoryIdRaw] = useState(() => load("rt_categoryId", "engineering"));
-  const [roleText, setRoleTextRaw] = useState(() => load("rt_roleText", "Software Engineering"));
+  const [roleText, setRoleTextRaw] = useState(() => load("rt_roleText", ""));
   const [targetType, setTargetTypeRaw] = useState(() => load("rt_targetType", "job"));
 
   // Free-text target role passed to the backend.
@@ -160,13 +160,10 @@ export default function ResumeToolPage() {
   const setCategoryId = (v) => {
     setCategoryIdRaw(v);
     save("rt_categoryId", v);
-    // When switching categories, prefill role with first suggestion of new category
-    const cat = findCategory(v);
-    const next = cat?.suggestions?.[0] || "";
-    if (next) {
-      setRoleTextRaw(next);
-      save("rt_roleText", next);
-    }
+    // Clear role text on category change so the suggestion dropdown shows
+    // ALL suggestions for the new category instead of being filtered to one
+    setRoleTextRaw("");
+    save("rt_roleText", "");
   };
   const setRoleText = (v) => { setRoleTextRaw(v); save("rt_roleText", v); };
   const setTargetType = (v) => { setTargetTypeRaw(v); save("rt_targetType", v); };
