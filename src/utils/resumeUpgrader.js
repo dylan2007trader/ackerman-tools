@@ -1410,14 +1410,20 @@ function parseJobHeader(line) {
 function parseEduLine(line) {
   const dateMatch = line.match(DATE_RANGE_RE);
   const dates = dateMatch ? dateMatch[0].trim() : "";
-  const withoutDate = dates
-    ? line.slice(0, line.lastIndexOf(dates)).replace(/\s+$/, "")
-    : line;
+  // Strip the date AND any trailing separator chars ("|", "–", extra spaces)
+  // so we don't leave a dangling "|" on the education line.
+  const withoutDate = (
+    dates ? line.slice(0, line.lastIndexOf(dates)) : line
+  )
+    .replace(/[\s|\-–—•·]+$/, "")
+    .trim();
 
   // "University of Arizona, Tucson, AZ" → last comma-part may be city/state
   const commaIdx = withoutDate.lastIndexOf(",");
   const institution = commaIdx > 0 ? withoutDate.slice(0, commaIdx).trim() : withoutDate.trim();
-  const location = commaIdx > 0 ? withoutDate.slice(commaIdx + 1).trim() : "";
+  const locationRaw = commaIdx > 0 ? withoutDate.slice(commaIdx + 1).trim() : "";
+  // Also strip any stray separator chars inside location
+  const location = locationRaw.replace(/[\s|]+$/, "").trim();
 
   return { institution, location, dates };
 }
