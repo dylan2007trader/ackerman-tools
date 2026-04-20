@@ -107,14 +107,46 @@ function extractContact(text = "") {
   // Find location: a token with ", ST" pattern or "Remote"
   const location = tokens.find((t) => /^[A-Za-z\s]+,\s*[A-Z]{2}$/.test(t) || /^remote$/i.test(t)) || "";
 
-  // Find LinkedIn: a token containing linkedin.com — strip protocol prefix
-  const linkedInRaw = tokens.find((t) => /linkedin\.com/i.test(t)) || "";
-  const linkedIn = linkedInRaw
-    .replace(/^https?:\/\/(?:www\.)?/i, "")
-    .replace(/^linkedin\.com\/in\/https?:\/\/(?:www\.)?linkedin\.com\/in\//i, "linkedin.com/in/");
+  // Preserve ANY links/handles in the header (portfolio, GitHub, LinkedIn,
+  // Behance, Vimeo, YouTube, personal website, certifications, etc.) — we
+  // don't hardcode platform names because different industries rely on
+  // different links (video reel for film, portfolio for design, GitHub for
+  // software, etc.).
+  const extraLinks = [];
+  const seenLinks = new Set();
 
-  // Build a clean, deduped contact string from individual tokens
-  const contactStr = [location, phone, email, linkedIn].filter(Boolean).join(" • ");
+  function pushLink(raw) {
+    if (!raw) return;
+    const cleaned = raw
+      .replace(/^https?:\/\/(?:www\.)?/i, "")
+      .replace(/[.,;]$/, "")
+      .trim();
+    if (!cleaned) return;
+    const key = cleaned.toLowerCase();
+    if (seenLinks.has(key)) return;
+    seenLinks.add(key);
+    extraLinks.push(cleaned);
+  }
+
+  tokens.forEach((token) => {
+    // Match: explicit URLs, domain/path handles, or www.example.com
+    if (/^https?:\/\//i.test(token) || /^www\./i.test(token)) {
+      pushLink(token);
+    } else if (/\.[a-z]{2,}\/[A-Za-z0-9._\-\/]+/i.test(token)) {
+      // e.g. "linkedin.com/in/username" or "behance.net/johndoe"
+      pushLink(token);
+    }
+  });
+
+  // LinkedIn gets a canonical, deduped slot in its traditional position.
+  // Any OTHER link (portfolio, GitHub, Behance, Vimeo, website) flows after it.
+  const linkedIn = extraLinks.find((l) => /linkedin\.com/i.test(l)) || "";
+  const otherLinks = extraLinks.filter((l) => !/linkedin\.com/i.test(l));
+
+  // Build a clean, deduped contact string
+  const contactStr = [location, phone, email, linkedIn, ...otherLinks]
+    .filter(Boolean)
+    .join(" • ");
 
   return {
     name: titleCase(name),
@@ -122,6 +154,7 @@ function extractContact(text = "") {
     phone,
     location,
     linkedIn,
+    links: otherLinks,
     contactStr,
     headerLine: contactStr,
   };

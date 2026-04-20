@@ -128,15 +128,31 @@ async function callClaudeGrader({ resumeText, targetRole, targetType }) {
   const role = targetRole || "general";
   const type = targetType || "job";
 
-  const system = `You are a strict but fair resume grader. Given a resume and a target role/career path, evaluate fit and return ONLY a single JSON object (no markdown, no commentary).
+  const system = `You are a strict resume grader. Given a resume and a target role/career path, evaluate fit and return ONLY a single JSON object (no markdown, no commentary).
 
-Scoring rules — BE REALISTIC, NOT GENEROUS:
-- Most resumes score 50-75 overall. Only exceptional resumes hit 85+.
-- 100 means zero improvements possible — essentially never the right answer.
-- Score each dimension independently based on what's actually in the resume.
-- Missing metrics? Impact score should be LOW (under 60).
-- Few role-specific keywords? Keyword score should be LOW (under 60).
-- Messy structure, missing sections? Structure score should be LOW.
+SCORING METHOD — count concrete signals, don't guess:
+
+Start overallScore at 50. Adjust using this rubric (integer math, final value clamped 0-100):
+
+Structure (contributes to structureScore and overallScore):
+  +5 for each of {Education, Experience, Skills, Projects, Summary} section present (max +25)
+  +3 if a summary/objective is present and role-oriented
+  -10 if the layout is chaotic or hard to scan
+
+Bullets & Impact (contributes to impactScore and overallScore):
+  +2 for EACH bullet starting with a strong varied action verb (cap +20)
+  +3 for EACH bullet containing a specific measurable outcome — number, %, dollars, scope words like "enterprise-scale", named audience/system (cap +25)
+  -3 for EACH vague bullet containing filler like "responsible for", "worked on", "helped with", "tasked with" (cap -15)
+
+Keywords (contributes to keywordMatchScore and overallScore):
+  +3 for each role-specific technical/domain keyword present (cap +20)
+  -3 for each clearly expected role keyword that is MISSING (cap -15)
+
+Tailoring to target role:
+  +8 if the resume clearly targets the specific role (terminology fits)
+  -8 if the resume reads generic — could apply to any role in the category
+
+Use the counts above to compute each sub-score independently. DO NOT anchor to 72 or any other "average" number — two similar-but-better resumes MUST produce clearly different scores (e.g. 64 vs 79). Score deltas of 10-20 points between original and improved versions are expected and correct. Scores above 85 should be rare; only resumes that check most boxes above earn them.
 
 Schema (all fields required):
 {
