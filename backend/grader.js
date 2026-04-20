@@ -128,7 +128,17 @@ async function callClaudeGrader({ resumeText, targetRole, targetType }) {
   const role = targetRole || "general";
   const type = targetType || "job";
 
-  const system = `You are a strict but fair resume grader. Given a resume and a target role/career path, evaluate fit and return ONLY a single JSON object (no markdown, no commentary). Schema:
+  const system = `You are a strict but fair resume grader. Given a resume and a target role/career path, evaluate fit and return ONLY a single JSON object (no markdown, no commentary).
+
+Scoring rules — BE REALISTIC, NOT GENEROUS:
+- Most resumes score 50-75 overall. Only exceptional resumes hit 85+.
+- 100 means zero improvements possible — essentially never the right answer.
+- Score each dimension independently based on what's actually in the resume.
+- Missing metrics? Impact score should be LOW (under 60).
+- Few role-specific keywords? Keyword score should be LOW (under 60).
+- Messy structure, missing sections? Structure score should be LOW.
+
+Schema (all fields required):
 {
   "overallScore": 0-100,
   "keywordMatchScore": 0-100,
@@ -136,13 +146,17 @@ async function callClaudeGrader({ resumeText, targetRole, targetType }) {
   "impactScore": 0-100,
   "matchedKeywords": ["..."],   // skills/keywords from resume that fit the target role (max 12)
   "missingKeywords": ["..."],   // important keywords for this role that are MISSING (max 8)
-  "technicalMatches": ["..."],  // technical/professional terms found that fit the role (max 12)
-  "strengths": ["..."],         // 3 short bullet strengths
+  "technicalMatches": ["..."],  // technical/professional terms found that fit the role (max 12). For non-tech roles use domain knowledge, certifications, methodologies.
+  "strengths": ["..."],         // 3 specific strengths you observed in the resume
   "improvements": [             // 3 actionable improvements specific to the target role
     {"title": "Short name", "body": "1-2 sentence specific suggestion"}
-  ]
+  ],
+  "strongBullets": ["..."],     // 3 actual bullet-point lines from the resume that demonstrate strong writing (quote them verbatim, truncated to 120 chars max). Pick only lines that are EXPERIENCE BULLETS — do NOT include the person's name, contact info, URLs, section headers like "Education", or dates. If no strong bullets exist, return empty array.
+  "weakBullets": ["..."],       // Up to 3 actual bullet-point lines that are weak, vague, or lack metrics (quote verbatim, truncated to 120 chars max). Same rule: only experience bullets. Do NOT include names, contact info, URLs, section headers, or education line items. If everything is strong, return empty array.
+  "scoreReasoning": "1-2 sentences explaining how you arrived at the overall score."
 }
-Be specific to the target role. For non-technical roles, "technicalMatches" can be domain knowledge or certifications. Be concise.`;
+
+Be specific to the target role. Be concise.`;
 
   const user = `TARGET ROLE: ${role}
 TARGET TYPE: ${type}
@@ -189,7 +203,17 @@ function mockGraderResponse({ targetRole }) {
       { title: "[mock] Tailor to role", body: `Add keywords relevant to ${targetRole || "your target"}.` },
       { title: "[mock] Strengthen summary", body: "Open with a 2-line summary." },
     ],
+    strongBullets: ["[mock] Built a full-stack app used by 40+ users"],
+    weakBullets: ["[mock] Worked on team projects"],
+    scoreReasoning: "[mock] Mock scoring — not a real evaluation.",
   };
+}
+
+// Clamp Claude output to sane integers 0-100 so bad responses don't crash UI
+function clampScore(value, fallback = 60) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(0, Math.min(100, Math.round(n)));
 }
 
 // Main entry point — combines base metrics with Claude insights
@@ -200,16 +224,23 @@ async function gradeResume({ resumeText, targetRole, targetType }) {
     : await callClaudeGrader({ resumeText, targetRole, targetType });
 
   // scoreDrivers is an array of plain strings in the UI (renders {item} directly).
-  // Flatten Claude's improvements into human-readable one-liners.
-  const scoreDrivers = (ai.improvements || []).map(
-    (item) => `${item.title}: ${item.body}`
-  );
+  // Start with Claude's scoreReasoning so the user sees WHY their score is what it is,
+  // then add the 3 improvements.
+  const scoreDrivers = [];
+  if (ai.scoreReasoning) {
+    scoreDrivers.push(`Why this score: ${ai.scoreReasoning}`);
+  }
+  (ai.improvements || []).forEach((item) => {
+    scoreDrivers.push(`${item.title}: ${item.body}`);
+  });
 
+  // Use Claude's scores as-is (clamped 0-100). Only the rule-based metrics
+  // (metric rate, action verb rate) come from deterministic counting.
   const breakdown = {
-    structure: ai.structureScore || 70,
-    keywords: ai.keywordMatchScore || 60,
+    structure: clampScore(ai.structureScore),
+    keywords: clampScore(ai.keywordMatchScore),
     projects: base.sectionsFound.projects ? 80 : 40,
-    experienceImpact: ai.impactScore || 60,
+    experienceImpact: clampScore(ai.impactScore),
     metrics: base.metricRate,
     achievementStrength: base.actionVerbRate,
   };
@@ -230,19 +261,30 @@ async function gradeResume({ resumeText, targetRole, targetType }) {
   if (base.contactChecks.hasEmail) structureEvidence.push("Email present in header");
   if (base.contactChecks.hasLinkedIn) structureEvidence.push("LinkedIn link present");
 
+  // Prefer Claude's curated bullets (only real experience bullets, no
+  // headers/contact lines). Fall back to rule-based only if Claude returned nothing.
+  const strongBullets =
+    Array.isArray(ai.strongBullets) && ai.strongBullets.length > 0
+      ? ai.strongBullets
+      : [];
+  const weakBullets =
+    Array.isArray(ai.weakBullets) && ai.weakBullets.length > 0
+      ? ai.weakBullets
+      : [];
+
   return {
     role: targetRole,
     targetType,
 
-    score: ai.overallScore,
-    overallScore: ai.overallScore,
-    resumeScore: ai.overallScore,
-    atsScore: ai.keywordMatchScore,
-    recruiterScore: ai.impactScore,
+    score: clampScore(ai.overallScore),
+    overallScore: clampScore(ai.overallScore),
+    resumeScore: clampScore(ai.overallScore),
+    atsScore: clampScore(ai.keywordMatchScore),
+    recruiterScore: clampScore(ai.impactScore),
 
-    keywordMatchScore: ai.keywordMatchScore,
-    keywordScore: ai.keywordMatchScore,
-    atsKeywordScore: ai.keywordMatchScore,
+    keywordMatchScore: clampScore(ai.keywordMatchScore),
+    keywordScore: clampScore(ai.keywordMatchScore),
+    atsKeywordScore: clampScore(ai.keywordMatchScore),
 
     actionVerbRate: base.actionVerbRate,
     metricRate: base.metricRate,
@@ -259,7 +301,6 @@ async function gradeResume({ resumeText, targetRole, targetType }) {
     matchedConcepts: ai.matchedKeywords || [],
     missingConcepts: ai.missingKeywords || [],
     keywordGaps: ai.missingKeywords || [],
-    weakBullets: base.weakExamples,
 
     missingSections: base.missingSections,
     hasProjects: base.sectionsFound.projects,
@@ -273,10 +314,12 @@ async function gradeResume({ resumeText, targetRole, targetType }) {
     achievementLineCount: base.achievementLineCount,
     metricCoveragePercent: base.metricRate,
     strongVerbCoveragePercent: base.actionVerbRate,
-    strongExamples: base.strongExamples,
-    weakExamples: base.weakExamples,
+    strongExamples: strongBullets,
+    weakExamples: weakBullets,
+    weakBullets,
     structureEvidence,
     scoreDrivers,
+    scoreReasoning: ai.scoreReasoning || "",
     strengths: ai.strengths || [],
 
     breakdown,
