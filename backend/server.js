@@ -352,6 +352,10 @@ const ALLOWED_ORIGINS = FRONTEND_ORIGIN.split(",")
   .map((value) => value.trim())
   .filter(Boolean);
 
+// Allow vercel.app preview deploys of this project. Safer than "*" — only
+// Vercel-issued subdomains of the configured project can connect.
+const VERCEL_PREVIEW_RE = /^https:\/\/ackerman-tools[a-z0-9-]*\.vercel\.app$/i;
+
 app.use(
   cors({
     origin(origin, callback) {
@@ -360,6 +364,10 @@ app.use(
         return callback(null, true);
       }
       if (ALLOWED_ORIGINS.includes(origin)) {
+        return callback(null, true);
+      }
+      // Accept branch/preview deploys from Vercel under this project.
+      if (VERCEL_PREVIEW_RE.test(origin)) {
         return callback(null, true);
       }
       return callback(new Error(`Origin not allowed by CORS: ${origin}`));
